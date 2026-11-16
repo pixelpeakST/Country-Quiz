@@ -2,9 +2,10 @@ import './style.css';
 import { COUNTRIES, COUNTRY_BY_ID, matchAnswer, normalizeAnswer, REGIONS, regionCountries, type RegionId } from './countries';
 import { WorldMap } from './map';
 import {
-  getBest, getNote, pickSession, recordAnswer, regionProgress, resetProgress, setNote, shuffle, submitScore, totalLearned,
+  getBest, getNote, pickSession, recordAnswer, regionProgress, setNote, shuffle, submitScore, totalLearned,
   type Mode,
 } from './store';
+import { initSync, onSyncState, resetEverywhere, signIn, signOut, signUp, syncNow, syncState } from './sync';
 
 type Scope = RegionId | 'world';
 
@@ -29,9 +30,12 @@ function h<K extends keyof HTMLElementTagNameMap>(
   return el;
 }
 
+let onHome = false;
+
 function show(...nodes: Node[]) {
   cleanup?.();
   cleanup = null;
+  onHome = false;
   app.replaceChildren(...nodes);
   window.scrollTo(0, 0);
 }
@@ -102,25 +106,143 @@ function home() {
           }),
         ),
       ),
+      accountBox(),
       h(
         'footer.foot',
         {},
         h('button.link', {
           textContent: 'Reset progress',
-          onclick: (e: Event) => {
+          onclick: async (e: Event) => {
             const btn = e.currentTarget as HTMLButtonElement;
-            if (btn.dataset.armed) {
-              resetProgress();
-              home();
-            } else {
+            if (!btn.dataset.armed) {
               btn.dataset.armed = '1';
-              btn.textContent = 'Tap again to erase all progress (memory hooks are kept)';
+              btn.textContent = syncState().email
+                ? 'Tap again to erase all progress on every device (memory hooks are kept)'
+                : 'Tap again to erase all progress (memory hooks are kept)';
+              return;
+            }
+            btn.disabled = true;
+            try {
+              await resetEverywhere();
+              onSyncState(() => {
+  // Refresh just the account box so the page doesn't jump while syncing.
+  const box = document.querySelector('.account');
+  const next = onHome ? accountBox() : null;
+  if (box && next) box.replaceWith(next);
+  else if (onHome && !!box !== !!next) home();
+});
+home();
+initSync(() => {
+  if (onHome) home();
+});
+            } catch (err: any) {
+              btn.textContent = `Couldn't reset: ${err?.message ?? err}`;
             }
           },
         }),
       ),
     ),
   );
+  onHome = true;
+}
+
+// ---------------------------------------------------------------- Account and sync
+
+function accountBox() {
+  const st = syncState();
+  if (!st.enabled) return null;
+  if (!st.email) {
+    return h(
+      'section.account',
+      {},
+      h('div', {}, h('strong', { textContent: 'Sync between devices' }), h('div.muted.small', { textContent: 'Sign in with your email to keep progress on your phone and computer.' })),
+      h('button', { textContent: 'Sign in', onclick: signInScreen }),
+    );
+  }
+  const label = {
+    off: '',
+    idle: 'Synced',
+    syncing: 'Syncing…',
+    offline: 'Offline. Will sync when you reconnect.',
+    error: `Sync problem: ${st.error}`,
+  }[st.status];
+  return h(
+    'section.account',
+    {},
+    h('div', {}, h('strong', { textContent: st.email }), h('div.muted.small', { textContent: label })),
+    h('div.row', {}, h('button.small', { textContent: 'Sync now', onclick: () => syncNow() }), h('button.small', { textContent: 'Sign out', onclick: async () => { await signOut(); home(); } })),
+  );
+}
+
+function signInScreen() {
+  let creating = false;
+  const msg = h('p.feedback', { role: 'status' });
+  const emailInput = <HTMLInputElement>h('input', { id: 'email', type: 'email', placeholder: 'you@example.com', autocomplete: 'email', required: true });
+  const pwInput = <HTMLInputElement>h('input', { id: 'password', type: 'password', autocomplete: 'current-password', required: true, minLength: 6 });
+  const submit = <HTMLButtonElement>h('button.primary', { type: 'submit', textContent: 'Sign in' });
+  const toggle = h('button.link', { type: 'button' });
+  const intro = h('p.muted');
+  function setMode(create: boolean) {
+    creating = create;
+    submit.textContent = create ? 'Create account' : 'Sign in';
+    toggle.textContent = create ? 'I already have an account' : 'New here? Create an account';
+    pwInput.autocomplete = create ? 'new-password' : 'current-password';
+    pwInput.placeholder = create ? 'At least 6 characters' : '';
+    intro.textContent = create
+      ? 'Pick a password for your account. Progress on this device will be kept and added to it.'
+      : 'Sign in to sync your progress. Progress on this device will be kept and merged with your account.';
+    msg.textContent = '';
+  }
+  toggle.addEventListener('click', () => setMode(!creating));
+  const form = h(
+    'form.signin',
+    {
+      onsubmit: async (e: Event) => {
+        e.preventDefault();
+        const email = emailInput.value.trim();
+        submit.disabled = true;
+        msg.textContent = creating ? 'Creating your account…' : 'Signing in…';
+        try {
+          if (creating) {
+            const result = await signUp(email, pwInput.value);
+            if (result === 'confirm-email') {
+              msg.textContent = `Almost done: open the email we sent to ${email} and tap the confirm link. Then come back here and sign in.`;
+              setModeKeepMsg(false);
+              return;
+            }
+          } else {
+            await signIn(email, pwInput.value);
+          }
+          home();
+        } catch (err: any) {
+          const text = String(err?.message ?? err);
+          msg.textContent = /not confirmed/i.test(text)
+            ? 'Please confirm your email first: tap the link in the email we sent, then sign in.'
+            : /invalid login/i.test(text)
+              ? 'Wrong email or password.'
+              : /already registered/i.test(text)
+                ? 'That email already has an account. Sign in instead.'
+                : `Couldn't sign in: ${text}`;
+        } finally {
+          submit.disabled = false;
+        }
+      },
+    },
+    h('label', { htmlFor: 'email', textContent: 'Email' }),
+    emailInput,
+    h('label', { htmlFor: 'password', textContent: 'Password' }),
+    pwInput,
+    submit,
+    toggle,
+  );
+  function setModeKeepMsg(create: boolean) {
+    const keep = msg.textContent;
+    setMode(create);
+    msg.textContent = keep;
+  }
+  setMode(false);
+  show(topBar('Sign in', home), h('main.menu', {}, intro, form, msg));
+  emailInput.focus();
 }
 
 // ---------------------------------------------------------------- Region menu
@@ -495,4 +617,14 @@ function challenge(scope: Scope) {
   }
 }
 
+onSyncState(() => {
+  // Refresh just the account box so the page doesn't jump while syncing.
+  const box = document.querySelector('.account');
+  const next = onHome ? accountBox() : null;
+  if (box && next) box.replaceWith(next);
+  else if (onHome && !!box !== !!next) home();
+});
 home();
+initSync(() => {
+  if (onHome) home();
+});
