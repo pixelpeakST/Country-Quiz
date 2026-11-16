@@ -21,7 +21,7 @@ const DOT_RADIUS = 6; // screen px
 const TINY_AREA = 40; // px² at normal zoom, below which a country also gets a dot
 const DOT_HIDE_AREA = 400; // px² on screen; once zoomed in this far, the dot is hidden
 
-/** Centre of a country's largest polygon (so island groups don't land in the sea between them). */
+/** Center of a country's largest polygon (so island groups don't land in the sea between them). */
 function mainCentroid(f: Shape): [number, number] {
   const g = f.geometry;
   if (g.type === 'MultiPolygon') {
@@ -147,7 +147,7 @@ export class WorldMap {
       if (c.point || (shapeArea.get(c.id) ?? 0) < TINY_AREA) tinyIds.add(c.id);
     }
     for (const id of tinyIds) {
-      // Dots only for this region's countries; neighbours don't need tap targets.
+      // Dots only for this region's countries; neighbors don't need tap targets.
       if (this.opts.region !== 'world' && COUNTRY_BY_ID.get(id)!.region !== this.opts.region) continue;
       const xy = this.projection(centroids.get(id)!);
       if (!xy) continue;
