@@ -1,0 +1,175 @@
+:root {
+  --bg: #f6f8f7;
+  --surface: #ffffff;
+  --text: #17201d;
+  --muted: #5d6b66;
+  --border: #dbe3e0;
+  --accent: #1f6f5c;
+  --accent-text: #ffffff;
+  --sea: #dcebf2;
+  --land: #e4e2dc;
+  --land-other: #efeee9;
+  --country-stroke: #ffffff;
+  --good: #2e9d5b;
+  --bad: #d64545;
+  --target: #f2b632;
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  color: var(--text);
+  background: var(--bg);
+  -webkit-tap-highlight-color: transparent;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #111715;
+    --surface: #1a2320;
+    --text: #e8eeec;
+    --muted: #9aa8a3;
+    --border: #2c3833;
+    --accent: #3fae8f;
+    --accent-text: #08130f;
+    --sea: #0f2430;
+    --land: #3a4541;
+    --land-other: #252e2b;
+    --country-stroke: #111715;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+    --bg: #111715;
+    --surface: #1a2320;
+    --text: #e8eeec;
+    --muted: #9aa8a3;
+    --border: #2c3833;
+    --accent: #3fae8f;
+    --accent-text: #08130f;
+    --sea: #0f2430;
+    --land: #3a4541;
+    --land-other: #252e2b;
+    --country-stroke: #111715;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--bg); }
+#app { min-height: 100dvh; display: flex; flex-direction: column; }
+
+button {
+  font: inherit;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px 16px;
+  cursor: pointer;
+  min-height: 44px;
+}
+button.primary { background: var(--accent); color: var(--accent-text); border-color: transparent; font-weight: 600; }
+button.small { padding: 8px 12px; min-height: 36px; font-size: 0.9rem; }
+button.link { background: none; border: none; color: var(--accent); padding: 8px; min-height: 0; text-decoration: underline; }
+button.icon { width: 44px; height: 44px; padding: 0; font-size: 1.6rem; line-height: 1; border: none; background: none; }
+.icon-spacer { width: 44px; }
+
+input, textarea {
+  font: inherit;
+  font-size: 16px; /* stops iOS from zooming in on focus */
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px 12px;
+  width: 100%;
+}
+input:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: max(env(safe-area-inset-top), 4px) 8px 4px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+.bar h1 { font-size: 1.05rem; margin: 0; text-align: center; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+main { padding: 16px; max-width: 640px; width: 100%; margin: 0 auto; }
+.muted { color: var(--muted); }
+.small { font-size: 0.875rem; }
+.big { font-size: 2.4rem; font-weight: 700; }
+.row { display: flex; gap: 8px; align-items: center; justify-content: space-between; }
+.good { color: var(--good); }
+.bad { color: var(--bad); }
+
+.hero { text-align: center; padding: 8px 0 4px; }
+.hero .progress { margin-top: 12px; }
+.tip { color: var(--muted); font-size: 0.9rem; line-height: 1.4; }
+
+.progress { height: 8px; background: var(--border); border-radius: 99px; overflow: hidden; margin-top: 8px; }
+.progress > div { height: 100%; background: var(--accent); border-radius: 99px; transition: width 0.3s; }
+
+.regions { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
+.region-card { text-align: left; display: flex; flex-direction: column; gap: 4px; }
+.region-card.world { grid-column: 1 / -1; border-color: var(--accent); }
+.badge { background: var(--target); color: #2b1d00; border-radius: 99px; padding: 2px 8px; font-size: 0.75rem; font-weight: 600; }
+.foot { text-align: center; margin-top: 24px; }
+
+.menu { display: flex; flex-direction: column; gap: 12px; }
+.menu-item { text-align: left; display: flex; flex-direction: column; gap: 2px; }
+.menu .big { text-align: center; }
+.menu > p { margin: 0; }
+
+/* Map screens fill the viewport: bar, map, panel. */
+.screen { display: flex; flex-direction: column; height: 100dvh; }
+.map { flex: 1; min-height: 0; background: var(--sea); position: relative; overflow: hidden; touch-action: none; }
+.map svg { display: block; }
+.panel {
+  padding: 12px 16px max(env(safe-area-inset-bottom), 12px);
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  height: 200px;
+  overflow-y: auto;
+}
+.panel p { margin: 0; }
+.prompt { font-size: 1.15rem; }
+.qhead { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.feedback { color: var(--muted); min-height: 1.2em; }
+.hook { background: var(--bg); border-radius: 10px; padding: 8px 10px; font-size: 0.95rem; }
+.hook-editor { display: flex; gap: 8px; align-items: flex-end; }
+.hook-editor textarea { resize: none; }
+.answer { display: flex; gap: 8px; }
+.clock { font-variant-numeric: tabular-nums; font-weight: 700; font-size: 1.1rem; }
+.count { font-weight: 600; }
+
+/* Map shapes */
+.map path, .map circle { vector-effect: non-scaling-stroke; stroke: var(--country-stroke); stroke-width: 0.6; }
+.map .land { fill: var(--land-other); }
+.map .country.inactive { fill: var(--land-other); }
+.map .country.active { fill: var(--land); }
+.map .dot { fill: var(--land); stroke: var(--muted); stroke-width: 1; fill-opacity: 0.85; }
+.map .dot.inactive { opacity: 0.35; }
+@media (hover: hover) {
+  .map .country.active:hover { fill: color-mix(in srgb, var(--land) 70%, var(--accent)); cursor: pointer; }
+}
+.map .country.correct { fill: var(--good); }
+.map .country.wrong { fill: var(--bad); }
+.map .country.target { fill: var(--target); }
+.map .country.reveal { fill: var(--bad); animation: pulse 1s ease-in-out 3; }
+.map .dot.correct, .map .dot.wrong, .map .dot.target, .map .dot.reveal { stroke: var(--country-stroke); stroke-width: 1.5; }
+@keyframes pulse { 50% { fill-opacity: 0.35; } }
+
+.map .labels text {
+  fill: var(--text);
+  font-weight: 700;
+  paint-order: stroke;
+  stroke: var(--bg);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+.map .labels text.wrong { fill: var(--bad); }
+
+.shake { animation: shake 0.35s; }
+@keyframes shake { 25% { transform: translateX(-6px); } 75% { transform: translateX(6px); } }
