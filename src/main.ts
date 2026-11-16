@@ -177,8 +177,8 @@ function accountBox() {
 function signInScreen() {
   let email = '';
   const msg = h('p.feedback');
-  const emailInput = <HTMLInputElement>h('input#email', { type: 'email', placeholder: 'you@example.com', autocomplete: 'email', required: true });
-  const codeInput = <HTMLInputElement>h('input#code', { type: 'text', inputMode: 'numeric', autocomplete: 'one-time-code', placeholder: '6-digit code', maxLength: 10 });
+  const emailInput = <HTMLInputElement>h('input', { id: 'email', type: 'email', placeholder: 'you@example.com', autocomplete: 'email', required: true });
+  const codeInput = <HTMLInputElement>h('input', { id: 'code', type: 'text', inputMode: 'numeric', autocomplete: 'one-time-code', placeholder: '6-digit code', maxLength: 10 });
   const codeForm = h(
     'form.signin',
     {

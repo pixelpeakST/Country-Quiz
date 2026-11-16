@@ -51,6 +51,7 @@
 }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html, body { margin: 0; height: 100%; background: var(--bg); }
 #app { min-height: 100dvh; display: flex; flex-direction: column; }
 
