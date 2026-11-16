@@ -5,7 +5,7 @@ import {
   getBest, getNote, pickSession, recordAnswer, regionProgress, setNote, shuffle, submitScore, totalLearned,
   type Mode,
 } from './store';
-import { initSync, onSyncState, resetEverywhere, sendCode, signOut, syncNow, syncState, verifyCode } from './sync';
+import { initSync, onSyncState, resetEverywhere, signIn, signOut, signUp, syncNow, syncState } from './sync';
 
 type Scope = RegionId | 'world';
 
@@ -175,64 +175,73 @@ function accountBox() {
 }
 
 function signInScreen() {
-  let email = '';
-  const msg = h('p.feedback');
+  let creating = false;
+  const msg = h('p.feedback', { role: 'status' });
   const emailInput = <HTMLInputElement>h('input', { id: 'email', type: 'email', placeholder: 'you@example.com', autocomplete: 'email', required: true });
-  const codeInput = <HTMLInputElement>h('input', { id: 'code', type: 'text', inputMode: 'numeric', autocomplete: 'one-time-code', placeholder: '6-digit code', maxLength: 10 });
-  const codeForm = h(
+  const pwInput = <HTMLInputElement>h('input', { id: 'password', type: 'password', autocomplete: 'current-password', required: true, minLength: 6 });
+  const submit = <HTMLButtonElement>h('button.primary', { type: 'submit', textContent: 'Sign in' });
+  const toggle = h('button.link', { type: 'button' });
+  const intro = h('p.muted');
+  function setMode(create: boolean) {
+    creating = create;
+    submit.textContent = create ? 'Create account' : 'Sign in';
+    toggle.textContent = create ? 'I already have an account' : 'New here? Create an account';
+    pwInput.autocomplete = create ? 'new-password' : 'current-password';
+    pwInput.placeholder = create ? 'At least 6 characters' : '';
+    intro.textContent = create
+      ? 'Pick a password for your account. Progress on this device will be kept and added to it.'
+      : 'Sign in to sync your progress. Progress on this device will be kept and merged with your account.';
+    msg.textContent = '';
+  }
+  toggle.addEventListener('click', () => setMode(!creating));
+  const form = h(
     'form.signin',
     {
       onsubmit: async (e: Event) => {
         e.preventDefault();
-        msg.textContent = 'Checking…';
+        const email = emailInput.value.trim();
+        submit.disabled = true;
+        msg.textContent = creating ? 'Creating your account…' : 'Signing in…';
         try {
-          await verifyCode(email, codeInput.value);
-          onSyncState(() => {
-  // Refresh just the account box so the page doesn't jump while syncing.
-  const box = document.querySelector('.account');
-  const next = onHome ? accountBox() : null;
-  if (box && next) box.replaceWith(next);
-  else if (onHome && !!box !== !!next) home();
-});
-home();
-initSync(() => {
-  if (onHome) home();
-});
+          if (creating) {
+            const result = await signUp(email, pwInput.value);
+            if (result === 'confirm-email') {
+              msg.textContent = `Almost done: open the email we sent to ${email} and tap the confirm link. Then come back here and sign in.`;
+              setModeKeepMsg(false);
+              return;
+            }
+          } else {
+            await signIn(email, pwInput.value);
+          }
+          home();
         } catch (err: any) {
-          msg.textContent = `That code didn't work (${err?.message ?? err}). Check it, or send a new one.`;
-        }
-      },
-    },
-    h('label', { htmlFor: 'code', textContent: 'Code from the email' }),
-    codeInput,
-    h('button.primary', { type: 'submit', textContent: 'Sign in' }),
-  );
-  codeForm.hidden = true;
-  const emailForm = h(
-    'form.signin',
-    {
-      onsubmit: async (e: Event) => {
-        e.preventDefault();
-        email = emailInput.value.trim();
-        msg.textContent = 'Sending…';
-        try {
-          await sendCode(email);
-          msg.textContent = `We emailed ${email}. Type the code here, or tap the link in the email.`;
-          codeForm.hidden = false;
-          codeInput.focus();
-        } catch (err: any) {
-          msg.textContent = `Couldn't send the email: ${err?.message ?? err}`;
+          const text = String(err?.message ?? err);
+          msg.textContent = /not confirmed/i.test(text)
+            ? 'Please confirm your email first: tap the link in the email we sent, then sign in.'
+            : /invalid login/i.test(text)
+              ? 'Wrong email or password.'
+              : /already registered/i.test(text)
+                ? 'That email already has an account. Sign in instead.'
+                : `Couldn't sign in: ${text}`;
+        } finally {
+          submit.disabled = false;
         }
       },
     },
     h('label', { htmlFor: 'email', textContent: 'Email' }),
     emailInput,
-    h('button', { type: 'submit', textContent: 'Email me a code' }),
+    h('label', { htmlFor: 'password', textContent: 'Password' }),
+    pwInput,
+    submit,
+    toggle,
   );
-  show(
-    topBar('Sign in', home),
-    h('main.menu', {}, h('p.muted', { textContent: 'Your progress on this device will be kept and merged with your account.' }), emailForm, codeForm, msg),
-  );
+  function setModeKeepMsg(create: boolean) {
+    const keep = msg.textContent;
+    setMode(create);
+    msg.textContent = keep;
+  }
+  setMode(false);
+  show(topBar('Sign in', home), h('main.menu', {}, intro, form, msg));
   emailInput.focus();
 }
 

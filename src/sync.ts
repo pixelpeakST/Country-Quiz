@@ -1,4 +1,4 @@
-// Sign-in (email code) and two-way sync with Supabase.
+// Sign-in (email and password) and two-way sync with Supabase.
 import { createClient, type SupabaseClient, type User } from '@supabase/supabase-js';
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from './config';
 import {
@@ -65,21 +65,26 @@ export async function initSync(onRemoteChange: () => void) {
 
 let remoteChanged: () => void = () => {};
 
-/** Step 1 of sign-in: email a 6-digit code (and a login link). */
-export async function sendCode(email: string) {
+/** Sign in to an existing account. */
+export async function signIn(email: string, password: string) {
   if (!client) throw new Error('Sign-in is not set up.');
-  const { error } = await client.auth.signInWithOtp({
-    email,
-    options: { shouldCreateUser: true, emailRedirectTo: location.href.split('#')[0] },
-  });
+  const { error } = await client.auth.signInWithPassword({ email, password });
   if (error) throw error;
 }
 
-/** Step 2 of sign-in: check the code from the email. */
-export async function verifyCode(email: string, code: string) {
+/**
+ * Create an account. Returns 'signed-in', or 'confirm-email' when Supabase
+ * wants the address confirmed first (tap the link in the email, then sign in).
+ */
+export async function signUp(email: string, password: string): Promise<'signed-in' | 'confirm-email'> {
   if (!client) throw new Error('Sign-in is not set up.');
-  const { error } = await client.auth.verifyOtp({ email, token: code.trim(), type: 'email' });
+  const { data, error } = await client.auth.signUp({
+    email,
+    password,
+    options: { emailRedirectTo: location.href.split('#')[0] },
+  });
   if (error) throw error;
+  return data.session ? 'signed-in' : 'confirm-email';
 }
 
 export async function signOut() {
