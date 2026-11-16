@@ -20,6 +20,7 @@
     "vite-plugin-pwa": "^0.20.5"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.119.0",
     "d3-geo": "^3.1.2",
     "d3-selection": "^3.0.1",
     "d3-transition": "^3.0.2",

@@ -2,9 +2,10 @@ import './style.css';
 import { COUNTRIES, COUNTRY_BY_ID, matchAnswer, normalizeAnswer, REGIONS, regionCountries, type RegionId } from './countries';
 import { WorldMap } from './map';
 import {
-  getBest, getNote, pickSession, recordAnswer, regionProgress, resetProgress, setNote, shuffle, submitScore, totalLearned,
+  getBest, getNote, pickSession, recordAnswer, regionProgress, setNote, shuffle, submitScore, totalLearned,
   type Mode,
 } from './store';
+import { initSync, onSyncState, resetEverywhere, sendCode, signOut, syncNow, syncState, verifyCode } from './sync';
 
 type Scope = RegionId | 'world';
 
@@ -29,9 +30,12 @@ function h<K extends keyof HTMLElementTagNameMap>(
   return el;
 }
 
+let onHome = false;
+
 function show(...nodes: Node[]) {
   cleanup?.();
   cleanup = null;
+  onHome = false;
   app.replaceChildren(...nodes);
   window.scrollTo(0, 0);
 }
@@ -102,25 +106,134 @@ function home() {
           }),
         ),
       ),
+      accountBox(),
       h(
         'footer.foot',
         {},
         h('button.link', {
           textContent: 'Reset progress',
-          onclick: (e: Event) => {
+          onclick: async (e: Event) => {
             const btn = e.currentTarget as HTMLButtonElement;
-            if (btn.dataset.armed) {
-              resetProgress();
-              home();
-            } else {
+            if (!btn.dataset.armed) {
               btn.dataset.armed = '1';
-              btn.textContent = 'Tap again to erase all progress (memory hooks are kept)';
+              btn.textContent = syncState().email
+                ? 'Tap again to erase all progress on every device (memory hooks are kept)'
+                : 'Tap again to erase all progress (memory hooks are kept)';
+              return;
+            }
+            btn.disabled = true;
+            try {
+              await resetEverywhere();
+              onSyncState(() => {
+  // Refresh just the account box so the page doesn't jump while syncing.
+  const box = document.querySelector('.account');
+  const next = onHome ? accountBox() : null;
+  if (box && next) box.replaceWith(next);
+  else if (onHome && !!box !== !!next) home();
+});
+home();
+initSync(() => {
+  if (onHome) home();
+});
+            } catch (err: any) {
+              btn.textContent = `Couldn't reset: ${err?.message ?? err}`;
             }
           },
         }),
       ),
     ),
   );
+  onHome = true;
+}
+
+// ---------------------------------------------------------------- Account and sync
+
+function accountBox() {
+  const st = syncState();
+  if (!st.enabled) return null;
+  if (!st.email) {
+    return h(
+      'section.account',
+      {},
+      h('div', {}, h('strong', { textContent: 'Sync between devices' }), h('div.muted.small', { textContent: 'Sign in with your email to keep progress on your phone and computer.' })),
+      h('button', { textContent: 'Sign in', onclick: signInScreen }),
+    );
+  }
+  const label = {
+    off: '',
+    idle: 'Synced',
+    syncing: 'Syncing…',
+    offline: 'Offline. Will sync when you reconnect.',
+    error: `Sync problem: ${st.error}`,
+  }[st.status];
+  return h(
+    'section.account',
+    {},
+    h('div', {}, h('strong', { textContent: st.email }), h('div.muted.small', { textContent: label })),
+    h('div.row', {}, h('button.small', { textContent: 'Sync now', onclick: () => syncNow() }), h('button.small', { textContent: 'Sign out', onclick: async () => { await signOut(); home(); } })),
+  );
+}
+
+function signInScreen() {
+  let email = '';
+  const msg = h('p.feedback');
+  const emailInput = <HTMLInputElement>h('input#email', { type: 'email', placeholder: 'you@example.com', autocomplete: 'email', required: true });
+  const codeInput = <HTMLInputElement>h('input#code', { type: 'text', inputMode: 'numeric', autocomplete: 'one-time-code', placeholder: '6-digit code', maxLength: 10 });
+  const codeForm = h(
+    'form.signin',
+    {
+      onsubmit: async (e: Event) => {
+        e.preventDefault();
+        msg.textContent = 'Checking…';
+        try {
+          await verifyCode(email, codeInput.value);
+          onSyncState(() => {
+  // Refresh just the account box so the page doesn't jump while syncing.
+  const box = document.querySelector('.account');
+  const next = onHome ? accountBox() : null;
+  if (box && next) box.replaceWith(next);
+  else if (onHome && !!box !== !!next) home();
+});
+home();
+initSync(() => {
+  if (onHome) home();
+});
+        } catch (err: any) {
+          msg.textContent = `That code didn't work (${err?.message ?? err}). Check it, or send a new one.`;
+        }
+      },
+    },
+    h('label', { htmlFor: 'code', textContent: 'Code from the email' }),
+    codeInput,
+    h('button.primary', { type: 'submit', textContent: 'Sign in' }),
+  );
+  codeForm.hidden = true;
+  const emailForm = h(
+    'form.signin',
+    {
+      onsubmit: async (e: Event) => {
+        e.preventDefault();
+        email = emailInput.value.trim();
+        msg.textContent = 'Sending…';
+        try {
+          await sendCode(email);
+          msg.textContent = `We emailed ${email}. Type the code here, or tap the link in the email.`;
+          codeForm.hidden = false;
+          codeInput.focus();
+        } catch (err: any) {
+          msg.textContent = `Couldn't send the email: ${err?.message ?? err}`;
+        }
+      },
+    },
+    h('label', { htmlFor: 'email', textContent: 'Email' }),
+    emailInput,
+    h('button', { type: 'submit', textContent: 'Email me a code' }),
+  );
+  show(
+    topBar('Sign in', home),
+    h('main.menu', {}, h('p.muted', { textContent: 'Your progress on this device will be kept and merged with your account.' }), emailForm, codeForm, msg),
+  );
+  emailInput.focus();
 }
 
 // ---------------------------------------------------------------- Region menu
@@ -495,4 +608,14 @@ function challenge(scope: Scope) {
   }
 }
 
+onSyncState(() => {
+  // Refresh just the account box so the page doesn't jump while syncing.
+  const box = document.querySelector('.account');
+  const next = onHome ? accountBox() : null;
+  if (box && next) box.replaceWith(next);
+  else if (onHome && !!box !== !!next) home();
+});
 home();
+initSync(() => {
+  if (onHome) home();
+});

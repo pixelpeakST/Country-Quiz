@@ -1,11 +1,13 @@
-// Local progress store. Everything lives in localStorage for now; the answer
-// log is append-only so it can later be synced to a server without conflicts.
+// Local progress store, kept in localStorage. The answer log is append-only and
+// every event has a unique id, so devices can swap events without conflicts;
+// spaced-repetition cards are rebuilt from the log whenever events are merged.
 import { createEmptyCard, fsrs, Rating, State, type Card } from 'ts-fsrs';
 import { COUNTRIES, regionCountries, type RegionId } from './countries';
 
 export type Mode = 'find' | 'name';
 
 export interface AnswerEvent {
+  id: string; // random, unique per answer
   t: number; // ms timestamp
   country: string;
   mode: Mode;
@@ -19,25 +21,54 @@ export interface BestScore {
   at: number;
 }
 
+export interface Note {
+  text: string; // empty = deleted
+  at: number; // last edited, ms
+}
+
 interface Data {
-  version: 1;
+  version: 2;
   cards: Record<string, Card>; // key = `${mode}:${countryId}`
-  notes: Record<string, string>; // memory hooks, by country id
+  notes: Record<string, Note>; // memory hooks, by country id
   best: Record<string, BestScore>; // key = region id or 'world'
   log: AnswerEvent[];
+  /** Ids of log events and keys of notes/scores not yet uploaded. */
+  dirty: { events: string[]; notes: string[]; best: string[] };
 }
 
 const KEY = 'country-quiz:v1';
-const scheduler = fsrs({ enable_fuzz: true });
+// No fuzz, so replaying the same log always gives the same schedule on every device.
+const scheduler = fsrs({ enable_fuzz: false });
+
+export const newId = () =>
+  typeof crypto !== 'undefined' && 'randomUUID' in crypto
+    ? crypto.randomUUID()
+    : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
 
 function load(): Data {
   try {
     const raw = localStorage.getItem(KEY);
-    if (raw) return JSON.parse(raw) as Data;
+    if (raw) return migrate(JSON.parse(raw));
   } catch {
     /* ignore corrupt or unavailable storage */
   }
-  return { version: 1, cards: {}, notes: {}, best: {}, log: [] };
+  return { version: 2, cards: {}, notes: {}, best: {}, log: [], dirty: { events: [], notes: [], best: [] } };
+}
+
+/** Upgrade data saved by the first version (no event ids, plain-string notes). */
+function migrate(d: any): Data {
+  if (d.version === 2) return d as Data;
+  const log: AnswerEvent[] = (d.log ?? []).map((e: any) => ({ ...e, id: e.id ?? newId() }));
+  const notes: Record<string, Note> = {};
+  for (const [k, v] of Object.entries(d.notes ?? {})) notes[k] = { text: String(v), at: Date.now() };
+  return {
+    version: 2,
+    cards: d.cards ?? {},
+    notes,
+    best: d.best ?? {},
+    log,
+    dirty: { events: log.map((e) => e.id), notes: Object.keys(notes), best: Object.keys(d.best ?? {}) },
+  };
 }
 
 const data = load();
@@ -60,11 +91,92 @@ function getCard(mode: Mode, id: string): Card | undefined {
 
 /** Record an answer: updates the spaced-repetition card and the log. */
 export function recordAnswer(mode: Mode, id: string, correct: boolean) {
-  const now = new Date();
-  const card = getCard(mode, id) ?? createEmptyCard<Card>(now);
-  const { card: next } = scheduler.next(card, now, correct ? Rating.Good : Rating.Again);
-  data.cards[cardKey(mode, id)] = next;
-  data.log.push({ t: now.getTime(), country: id, mode, correct });
+  const ev: AnswerEvent = { id: newId(), t: Date.now(), country: id, mode, correct };
+  applyEvent(ev);
+  data.log.push(ev);
+  data.dirty.events.push(ev.id);
+  save();
+  notifyChange();
+}
+
+function applyEvent(ev: AnswerEvent) {
+  const now = new Date(ev.t);
+  const card = getCard(ev.mode, ev.country) ?? createEmptyCard<Card>(now);
+  const { card: next } = scheduler.next(card, now, ev.correct ? Rating.Good : Rating.Again);
+  data.cards[cardKey(ev.mode, ev.country)] = next;
+}
+
+/** Rebuild every card by replaying the whole log in time order. */
+function rebuildCards() {
+  data.log.sort((a, b) => a.t - b.t);
+  data.cards = {};
+  for (const ev of data.log) applyEvent(ev);
+}
+
+// ---------------------------------------------------------------- Sync hooks
+
+let onChange: (() => void) | null = null;
+/** Called after any local change that should be uploaded. */
+export function setChangeListener(fn: () => void) {
+  onChange = fn;
+}
+function notifyChange() {
+  onChange?.();
+}
+
+export function pendingChanges() {
+  const ids = new Set(data.dirty.events);
+  return {
+    events: data.log.filter((e) => ids.has(e.id)),
+    notes: data.dirty.notes.map((k) => [k, data.notes[k]] as [string, Note]).filter(([, n]) => n),
+    best: data.dirty.best.map((k) => [k, data.best[k]] as [string, BestScore]).filter(([, b]) => b),
+  };
+}
+
+export function markUploaded(done: { events: string[]; notes: string[]; best: string[] }) {
+  const ev = new Set(done.events);
+  const no = new Set(done.notes);
+  const be = new Set(done.best);
+  data.dirty.events = data.dirty.events.filter((id) => !ev.has(id));
+  data.dirty.notes = data.dirty.notes.filter((k) => !no.has(k));
+  data.dirty.best = data.dirty.best.filter((k) => !be.has(k));
+  save();
+}
+
+/** Merge data downloaded from the server. Returns true if anything changed. */
+export function mergeRemote(remote: { events: AnswerEvent[]; notes: [string, Note][]; best: [string, BestScore][] }) {
+  let changed = false;
+  const have = new Set(data.log.map((e) => e.id));
+  const fresh = remote.events.filter((e) => !have.has(e.id));
+  if (fresh.length) {
+    data.log.push(...fresh);
+    rebuildCards();
+    changed = true;
+  }
+  for (const [k, n] of remote.notes) {
+    const mine = data.notes[k];
+    if (!mine || n.at > mine.at) {
+      data.notes[k] = n;
+      changed = true;
+    }
+  }
+  for (const [k, b] of remote.best) {
+    if (isBetter(b, data.best[k])) {
+      data.best[k] = b;
+      changed = true;
+    }
+  }
+  if (changed) save();
+  return changed;
+}
+
+/** Wipe answers and scores locally (the caller also wipes the server copy). */
+export function clearLocalProgress() {
+  data.cards = {};
+  data.best = {};
+  data.log = [];
+  data.dirty.events = [];
+  data.dirty.best = [];
   save();
 }
 
@@ -120,13 +232,14 @@ export function pickSession(region: RegionId | 'world', mode: Mode, size = 10, n
 }
 
 export function getNote(id: string) {
-  return data.notes[id] ?? '';
+  return data.notes[id]?.text ?? '';
 }
 
 export function setNote(id: string, text: string) {
-  if (text.trim()) data.notes[id] = text.trim();
-  else delete data.notes[id];
+  data.notes[id] = { text: text.trim(), at: Date.now() };
+  if (!data.dirty.notes.includes(id)) data.dirty.notes.push(id);
   save();
+  notifyChange();
 }
 
 export function getBest(key: string): BestScore | undefined {
@@ -134,21 +247,19 @@ export function getBest(key: string): BestScore | undefined {
 }
 
 /** Saves the score if it beats the previous best (more found, or same found faster). */
-export function submitScore(key: string, score: BestScore): boolean {
-  const prev = data.best[key];
-  const better = !prev || score.found > prev.found || (score.found === prev.found && score.ms < prev.ms);
-  if (better) {
-    data.best[key] = score;
-    save();
-  }
-  return better;
+function isBetter(score: BestScore, prev: BestScore | undefined) {
+  return !prev || score.found > prev.found || (score.found === prev.found && score.ms < prev.ms);
 }
 
-export function resetProgress() {
-  data.cards = {};
-  data.best = {};
-  data.log = [];
-  save();
+export function submitScore(key: string, score: BestScore): boolean {
+  const better = isBetter(score, data.best[key]);
+  if (better) {
+    data.best[key] = score;
+    if (!data.dirty.best.includes(key)) data.dirty.best.push(key);
+    save();
+    notifyChange();
+  }
+  return better;
 }
 
 export function shuffle<T>(arr: T[]): T[] {
