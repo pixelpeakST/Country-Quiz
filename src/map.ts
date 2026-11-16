@@ -18,9 +18,10 @@ const ALL_SHAPES: Shape[] = (
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const DOT_RADIUS = 6; // screen px
-const TINY_AREA = 40; // px², below which a country also gets a dot
+const TINY_AREA = 40; // px² at normal zoom, below which a country also gets a dot
+const DOT_HIDE_AREA = 400; // px² on screen; once zoomed in this far, the dot is hidden
 
-/** Centre of a country's largest polygon (so island groups don't land in the sea between them). */
+/** Center of a country's largest polygon (so island groups don't land in the sea between them). */
 function mainCentroid(f: Shape): [number, number] {
   const g = f.geometry;
   if (g.type === 'MultiPolygon') {
@@ -146,6 +147,8 @@ export class WorldMap {
       if (c.point || (shapeArea.get(c.id) ?? 0) < TINY_AREA) tinyIds.add(c.id);
     }
     for (const id of tinyIds) {
+      // Dots only for this region's countries; neighbors don't need tap targets.
+      if (this.opts.region !== 'world' && COUNTRY_BY_ID.get(id)!.region !== this.opts.region) continue;
       const xy = this.projection(centroids.get(id)!);
       if (!xy) continue;
       const dot = document.createElementNS(SVG_NS, 'circle');
@@ -153,6 +156,7 @@ export class WorldMap {
       dot.setAttribute('cy', String(xy[1]));
       dot.setAttribute('r', String(this.dotRadius));
       dot.setAttribute('class', 'country dot');
+      dot.dataset.area = String(shapeArea.get(id) ?? 0);
       dot.dataset.id = id;
       this.track(id, dot);
       dotsG.node()!.appendChild(dot);
@@ -183,7 +187,15 @@ export class WorldMap {
         if (layer !== this.layer) return;
         layer.attr('transform', ev.transform.toString());
         this.k = ev.transform.k;
-        dotsG.selectAll('circle').attr('r', this.dotRadius / this.k);
+        const k = this.k;
+        dotsG
+          .selectAll<SVGCircleElement, unknown>('circle')
+          .attr('r', this.dotRadius / k)
+          // A dot is only a tap target for countries too small to tap; hide it once
+          // you've zoomed in far enough to tap the country itself.
+          .attr('display', function () {
+            return Number(this.dataset.area) * k * k >= DOT_HIDE_AREA ? 'none' : null;
+          });
         layer.selectAll<SVGTextElement, unknown>('.labels text').attr('font-size', 15 / this.k);
       });
     this.svg.call(this.zoomer).on('dblclick.zoom', null);

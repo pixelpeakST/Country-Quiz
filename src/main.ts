@@ -81,7 +81,7 @@ function home() {
         progressBar(learned, COUNTRIES.length),
       ),
       h('p.tip', {
-        textContent: 'Learn one region at a time: explore the map, practise until it sticks, then try the timed challenge. Come back every couple of days for reviews.',
+        textContent: 'Learn one region at a time: explore the map, practice until it sticks, then try the timed challenge. Come back every couple of days for reviews.',
       }),
       h(
         'div.regions',
@@ -512,14 +512,14 @@ function practice(scope: Scope, mode: Mode) {
         h('p.muted', { textContent: 'right on the first try' }),
         missed.length ? h('p', { textContent: `To review: ${missed.join(', ')}` }) : h('p', { textContent: 'Perfect session!' }),
         p && h('p.muted', { textContent: `${scopeName(scope)}: ${p.learned} of ${p.total} learned` }),
-        h('button.primary', { textContent: 'Practise again', onclick: () => practice(scope, mode) }),
+        h('button.primary', { textContent: 'Practice again', onclick: () => practice(scope, mode) }),
         h('button', { textContent: 'Back to menu', onclick: () => regionMenu(scope) }),
       ),
     );
   }
 
   if (!queue.length) {
-    panel.replaceChildren(h('p.prompt', { textContent: 'Nothing to practise here.' }));
+    panel.replaceChildren(h('p.prompt', { textContent: 'Nothing to practice here.' }));
     return;
   }
   ask();
