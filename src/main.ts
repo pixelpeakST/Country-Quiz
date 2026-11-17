@@ -805,7 +805,6 @@ function practice(scope: Scope, mode: Mode) {
       note ?? '',
       h('button.primary', { textContent: 'Next', onclick: next }),
     );
-    if (tries === 0 && !note) setTimeout(() => idx < queue.length && queue[idx] === id && answered && next(), 900);
   }
 
   function reveal() {
