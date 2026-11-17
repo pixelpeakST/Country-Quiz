@@ -1,4 +1,11 @@
+import '@fontsource/lilita-one/latin-400.css';
+import '@fontsource/sniglet/latin-400.css';
+import '@fontsource/sniglet/latin-800.css';
+import '@fontsource/nunito/latin-400.css';
+import '@fontsource/nunito/latin-600.css';
+import '@fontsource/nunito/latin-700.css';
 import './style.css';
+import { REGION_ART } from './regionArt';
 import { COUNTRIES, COUNTRY_BY_ID, matchAnswer, normalizeAnswer, REGIONS, regionCountries, type RegionId } from './countries';
 import { WorldMap } from './map';
 import {
@@ -132,22 +139,44 @@ function home() {
 
 // ---------------------------------------------------------------- Home pieces
 
-const TIP_REST = 'Explore the map, practice until it sticks, then try the timed challenge. Come back every couple of days for reviews.';
+const TIP_REST =
+  'Learn one region at a time. Explore the map, practice until it sticks, then try the timed challenge. Come back every couple of days for reviews.';
 
 function tipLine() {
-  const more = h('span.tip-more', { textContent: ` ${TIP_REST}` });
-  more.hidden = true;
+  const tip = h('div.tip', {});
   const info = <HTMLButtonElement>h('button.info', { type: 'button', ariaLabel: 'How to study', ariaExpanded: 'false', textContent: 'i' });
   info.addEventListener('click', () => {
-    more.hidden = !more.hidden;
-    info.ariaExpanded = String(!more.hidden);
-    info.classList.toggle('on', !more.hidden);
+    const open = tip.classList.toggle('open');
+    info.ariaExpanded = String(open);
   });
-  return h('div.tip', {}, info, h('p', {}, 'Learn one region at a time:', more));
+  tip.append(
+    h('div.tip-head', {}, h('p', { textContent: 'One at a time' }), info),
+    h('div.tip-more', {}, h('div', {}, h('p', { textContent: TIP_REST }))),
+  );
+  return tip;
+}
+
+/** Simple silhouette of a region, sized to fit its card. */
+function regionArt(scope: Scope) {
+  const a = REGION_ART[scope];
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', `0 0 ${a.w} ${a.h}`);
+  svg.setAttribute('class', 'region-art');
+  svg.setAttribute('aria-hidden', 'true');
+  svg.style.aspectRatio = `${a.w} / ${a.h}`;
+  const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  path.setAttribute('d', a.d);
+  svg.append(path);
+  return svg;
 }
 
 function regionCard(scope: Scope, ...content: (Node | null)[]) {
-  return h(`button.region-card${scope === 'world' ? '.world' : ''}`, { type: 'button', onclick: () => regionMenu(scope) }, ...content);
+  return h(
+    `button.region-card${scope === 'world' ? '.world' : ''}`,
+    { type: 'button', onclick: () => regionMenu(scope) },
+    h('div.card-body', {}, ...content),
+    regionArt(scope),
+  );
 }
 
 function recentCard() {
@@ -157,10 +186,15 @@ function recentCard() {
   return h(
     'button.region-card.recent',
     { type: 'button', onclick: () => regionMenu(r.scope) },
-    h('span.eyebrow', { textContent: 'Recent' }),
-    h('div.row', {}, h('strong', { textContent: scopeName(r.scope) }), p?.due ? h('span.badge', { textContent: `${p.due} due` }) : null),
-    h('div.muted.small', { textContent: `Opened ${timeAgo(r.at)}${p ? ` · ${p.learned} of ${p.total} learned` : ''}` }),
-    p ? progressBar(p.learned, p.total) : null,
+    h(
+      'div.card-body',
+      {},
+      h('span.eyebrow', { textContent: 'Recent' }),
+      h('div.row', {}, h('strong', { textContent: scopeName(r.scope) }), p?.due ? h('span.badge', { textContent: `${p.due} due` }) : null),
+      h('div.muted.small', { textContent: `Opened ${timeAgo(r.at)}${p ? ` · ${p.learned} of ${p.total} learned` : ''}` }),
+      p ? progressBar(p.learned, p.total) : null,
+    ),
+    regionArt(r.scope),
   );
 }
 
