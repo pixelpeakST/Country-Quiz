@@ -238,7 +238,7 @@ function sideMenu() {
       'section.settings',
       {},
       h('h3', { textContent: 'Settings' }),
-      h('div.setting-group', {}, h('span.setting-label', { textContent: 'Account and sync' }), accountBox()),
+      accountDropdown(),
       h('div.setting-group', {}, h('span.setting-label', { textContent: 'Progress' }), resetButton()),
     ),
   );
@@ -263,7 +263,7 @@ function activityPanel() {
         {},
         h('span.flame', { ariaHidden: 'true', textContent: '🔥' }),
         h('div', {},
-          h('div.streak-num', { textContent: `${a.streak} day streak` }),
+          streakTitle(a.streak, 'streak-num'),
           h('div.muted.small', { textContent: a.doneToday ? 'you practiced today. see you tomorrow!' : 'practice today to keep it going' }),
         ),
       )
@@ -322,6 +322,26 @@ function activityPanel() {
   );
 }
 
+const ONES = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve',
+  'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen'];
+const TENS = ['', '', 'twenty', 'thirty', 'forty', 'fifty', 'sixty', 'seventy', 'eighty', 'ninety'];
+
+/** "five", "twenty-one", "one hundred"; past 100 it stays a number. */
+function numberWord(n: number): string {
+  if (n > 100 || n < 0) return String(n);
+  if (n === 100) return 'one hundred';
+  if (n < 20) return ONES[n];
+  return TENS[Math.floor(n / 10)] + (n % 10 ? `-${ONES[n % 10]}` : '');
+}
+
+/** "five" centered above "day streak" (or "101 day streak" on one line past 100). */
+function streakTitle(n: number, cls: string, bang = false) {
+  const text = n > 100
+    ? h('span.streak-lines', {}, h('span', { textContent: `${n} day streak` }))
+    : h('span.streak-lines', {}, h('span.streak-word', { textContent: numberWord(n) }), h('span', { textContent: 'day streak' }));
+  return h(`div.${cls}`, {}, text, bang ? h('span.bang', { ariaHidden: 'true', textContent: '!' }) : null);
+}
+
 function celebrateIfStreak(delay: number) {
   const n = streakToCelebrate();
   if (n) setTimeout(() => celebrate(n), delay);
@@ -346,7 +366,7 @@ function celebrate(n: number) {
     burst,
     h('div.celebrate-card', {},
       h('div.celebrate-emoji', { textContent: n >= 10 ? '🏆' : '🔥' }),
-      h('div.celebrate-num', { textContent: `${n} day streak!` }),
+      streakTitle(n, 'celebrate-num', true),
       h('div.muted', { textContent: n === 3 ? 'nice start, keep it rolling' : 'you are on fire' }),
     ),
   );
@@ -418,6 +438,23 @@ function statsDrawer(scope: Scope) {
 }
 
 // ---------------------------------------------------------------- Account and sync
+
+function accountDropdown() {
+  const st = syncState();
+  const group = h('div.setting-group.dropdown', {});
+  const toggle = <HTMLButtonElement>h(
+    'button.dropdown-toggle',
+    { type: 'button', ariaExpanded: 'false' },
+    h('span', {}, h('span.setting-label', { textContent: 'Account and sync' }), h('span.muted.small.dropdown-sub', { textContent: st.email ?? 'not signed in' })),
+    h('span.chev', { ariaHidden: 'true', textContent: '›' }),
+  );
+  toggle.addEventListener('click', () => {
+    const open = group.classList.toggle('open');
+    toggle.ariaExpanded = String(open);
+  });
+  group.append(toggle, h('div.dropdown-body', {}, h('div', {}, accountBox())));
+  return group;
+}
 
 function accountBox() {
   const st = syncState();
