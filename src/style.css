@@ -63,6 +63,9 @@
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
 html, body { margin: 0; height: 100%; background: var(--bg); }
+/* Everything is lowercase; what you type stays as typed. */
+body, button, select, option { text-transform: lowercase; }
+input, textarea { text-transform: none; }
 #app { min-height: 100dvh; display: flex; flex-direction: column; }
 
 button {
@@ -142,7 +145,7 @@ main { padding: 16px; max-width: 640px; width: 100%; margin: 0 auto; }
 .region-card:active .region-art { transform: rotate(-6deg) scale(1.06); }
 .region-card.world { grid-column: 1 / -1; border-color: var(--accent); }
 .region-card.recent { grid-column: 1 / -1; padding: 12px 14px 14px 16px; background: var(--recent); border-color: transparent; }
-.eyebrow { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.eyebrow { font-size: 0.85rem; font-weight: 700; color: var(--muted); }
 
 /* Stats drawer over a blurred backdrop. */
 .sheet-backdrop {
@@ -178,7 +181,7 @@ main { padding: 16px; max-width: 640px; width: 100%; margin: 0 auto; }
 .settings { display: flex; flex-direction: column; gap: 14px; border-top: 1px solid var(--border); padding-top: 16px; }
 .settings h3 { margin: 0; }
 .setting-group { display: flex; flex-direction: column; gap: 8px; }
-.setting-label { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.setting-label { font-size: 0.85rem; font-weight: 700; color: var(--muted); }
 .link.danger { color: var(--bad); align-self: flex-start; padding-left: 0; }
 .drawer-actions { margin-top: auto; display: flex; flex-direction: column; }
 @keyframes fade-in { from { opacity: 0; } }
