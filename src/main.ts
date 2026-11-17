@@ -2,8 +2,8 @@ import './style.css';
 import { COUNTRIES, COUNTRY_BY_ID, matchAnswer, normalizeAnswer, REGIONS, regionCountries, type RegionId } from './countries';
 import { WorldMap } from './map';
 import {
-  getBest, getNote, pickSession, recordAnswer, regionProgress, setNote, shuffle, submitScore, totalLearned,
-  type Mode,
+  getBest, getNote, getRecent, pickSession, recordAnswer, regionProgress, regionStats, setNote, setRecent, shuffle,
+  submitScore, totalLearned, type Mode,
 } from './store';
 import { initSync, onSyncState, resetEverywhere, signIn, signOut, signUp, syncNow, syncState } from './sync';
 
@@ -58,6 +58,28 @@ function progressBar(value: number, total: number) {
   return h('div.progress', { role: 'progressbar', ariaValueNow: String(pct) }, h('div', { style: `width:${pct}%` }));
 }
 
+function timeAgo(t: number) {
+  const s = Math.max(0, (Date.now() - t) / 1000);
+  if (s < 60) return 'just now';
+  const m = Math.round(s / 60);
+  if (m < 60) return `${m} min ago`;
+  const hr = Math.round(m / 60);
+  if (hr < 24) return `${hr} hour${hr === 1 ? '' : 's'} ago`;
+  const d = Math.round(hr / 24);
+  return d === 1 ? 'yesterday' : `${d} days ago`;
+}
+
+function timeUntil(t: number) {
+  const s = Math.max(0, (t - Date.now()) / 1000);
+  const hr = s / 3600;
+  if (hr < 1) return 'within the hour';
+  if (hr < 24) return `in ${Math.round(hr)} hour${Math.round(hr) === 1 ? '' : 's'}`;
+  const d = Math.round(hr / 24);
+  return d === 1 ? 'tomorrow' : `in ${d} days`;
+}
+
+const pct = (n: number, d: number) => (d ? `${Math.round((n / d) * 100)}%` : '–');
+
 function fmtTime(ms: number) {
   const s = Math.max(0, Math.round(ms / 1000));
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
@@ -80,26 +102,23 @@ function home() {
         h('div.muted', { textContent: 'countries you can find on the map' }),
         progressBar(learned, COUNTRIES.length),
       ),
-      h('p.tip', {
-        textContent: 'Learn one region at a time: explore the map, practice until it sticks, then try the timed challenge. Come back every couple of days for reviews.',
-      }),
+      tipLine(),
       h(
         'div.regions',
         {},
+        recentCard(),
         ...REGIONS.map((r) => {
           const p = regionProgress(r.id);
           const best = getBest(r.id);
-          return h(
-            'button.region-card',
-            { onclick: () => regionMenu(r.id) },
+          return regionCard(
+            r.id,
             h('div.row', {}, h('strong', { textContent: r.name }), p.due ? h('span.badge', { textContent: `${p.due} due` }) : null),
             h('div.muted.small', { textContent: `${p.learned} of ${p.total} learned${best ? ` · best ${best.found}/${best.total}` : ''}` }),
             progressBar(p.learned, p.total),
           );
         }),
-        h(
-          'button.region-card.world',
-          { onclick: () => regionMenu('world') },
+        regionCard(
+          'world',
           h('strong', { textContent: 'Whole world' }),
           h('div.muted.small', {
             textContent: worldBest ? `Best: ${worldBest.found}/${worldBest.total} in ${fmtTime(worldBest.ms)}` : 'Timed quiz on all 197 countries',
@@ -144,6 +163,93 @@ initSync(() => {
     ),
   );
   onHome = true;
+}
+
+// ---------------------------------------------------------------- Home pieces
+
+const TIP_REST = 'Explore the map, practice until it sticks, then try the timed challenge. Come back every couple of days for reviews.';
+
+function tipLine() {
+  const more = h('span.tip-more', { textContent: ` ${TIP_REST}` });
+  more.hidden = true;
+  const info = <HTMLButtonElement>h('button.info', { type: 'button', ariaLabel: 'How to study', ariaExpanded: 'false', textContent: 'i' });
+  info.addEventListener('click', () => {
+    more.hidden = !more.hidden;
+    info.ariaExpanded = String(!more.hidden);
+    info.classList.toggle('on', !more.hidden);
+  });
+  return h('div.tip', {}, info, h('p', {}, 'Learn one region at a time:', more));
+}
+
+/** A region card: tapping it opens the region; the Stats link at the bottom opens the stats drawer. */
+function regionCard(scope: Scope, ...content: (Node | null)[]) {
+  return h(
+    `div.region-card${scope === 'world' ? '.world' : ''}`,
+    {},
+    h('button.region-open', { type: 'button', onclick: () => regionMenu(scope) }, ...content),
+    h('button.stats-link', { type: 'button', textContent: 'Stats', onclick: () => statsDrawer(scope) }),
+  );
+}
+
+function recentCard() {
+  const r = getRecent();
+  if (!r) return null;
+  const p = r.scope === 'world' ? null : regionProgress(r.scope);
+  return h(
+    'button.region-card.recent',
+    { type: 'button', onclick: () => regionMenu(r.scope) },
+    h('span.eyebrow', { textContent: 'Recent' }),
+    h('div.row', {}, h('strong', { textContent: scopeName(r.scope) }), p?.due ? h('span.badge', { textContent: `${p.due} due` }) : null),
+    h('div.muted.small', { textContent: `Opened ${timeAgo(r.at)}${p ? ` · ${p.learned} of ${p.total} learned` : ''}` }),
+    p ? progressBar(p.learned, p.total) : null,
+  );
+}
+
+function statsDrawer(scope: Scope) {
+  const st = regionStats(scope);
+  const best = getBest(scope);
+  const opener = document.activeElement as HTMLElement | null;
+  const statRow = (label: string, value: string, sub?: string) =>
+    h('div.stat', {}, h('span.muted', { textContent: label }), h('span.stat-val', {}, value, sub ? h('span.muted.small', { textContent: ` ${sub}` }) : null));
+  const close = () => {
+    document.removeEventListener('keydown', onKey);
+    backdrop.classList.add('closing');
+    setTimeout(() => backdrop.remove(), 200);
+    opener?.focus();
+  };
+  const onKey = (e: KeyboardEvent) => e.key === 'Escape' && close();
+  const closeBtn = h('button.icon.close', { type: 'button', ariaLabel: 'Close stats', textContent: '✕', onclick: close });
+  const drawer = h(
+    'aside.drawer',
+    { role: 'dialog', ariaModal: 'true', ariaLabel: `${scopeName(scope)} stats`, onclick: (e: Event) => e.stopPropagation() },
+    h('div.drawer-head', {}, h('div', {}, h('span.eyebrow', { textContent: 'Stats' }), h('h2', { textContent: scopeName(scope) })), closeBtn),
+    h('div.drawer-hero', {}, h('div.big', { textContent: `${st.learned} / ${st.total}` }), h('div.muted.small', { textContent: 'learned' }), progressBar(st.learned, st.total)),
+    h(
+      'div.stat-list',
+      {},
+      statRow('Due now', String(st.due), st.due ? undefined : st.nextDue ? `· next ${timeUntil(st.nextDue)}` : undefined),
+      statRow('Countries seen', `${st.seen} of ${st.total}`),
+      statRow('Find it accuracy', pct(st.find.correct, st.find.answers), st.find.answers ? `(${st.find.answers} answers)` : undefined),
+      statRow('Name it accuracy', pct(st.name.correct, st.name.answers), st.name.answers ? `(${st.name.answers} answers)` : undefined),
+      statRow('Best challenge', best ? `${best.found}/${best.total}` : '–', best ? `in ${fmtTime(best.ms)}` : undefined),
+      statRow('Last practiced', st.lastPlayed ? timeAgo(st.lastPlayed) : 'Not yet'),
+    ),
+    h('h3', { textContent: 'Most missed' }),
+    st.hardest.length
+      ? h(
+          'ol.hardest',
+          {},
+          ...st.hardest.map((x) =>
+            h('li', {}, h('span', { textContent: COUNTRY_BY_ID.get(x.id)!.name }), h('span.muted.small', { textContent: `${x.misses} missed of ${x.answers}` })),
+          ),
+        )
+      : h('p.muted.small', { textContent: 'Nothing missed yet.' }),
+    h('div.drawer-actions', {}, h('button.primary', { type: 'button', textContent: st.due ? `Practice ${st.due} due` : 'Practice', onclick: () => { close(); practice(scope, 'find'); } })),
+  );
+  const backdrop = h('div.sheet-backdrop', { onclick: close }, drawer);
+  document.addEventListener('keydown', onKey);
+  document.body.append(backdrop);
+  closeBtn.focus();
 }
 
 // ---------------------------------------------------------------- Account and sync
@@ -248,6 +354,7 @@ function signInScreen() {
 // ---------------------------------------------------------------- Region menu
 
 function regionMenu(scope: Scope) {
+  setRecent(scope);
   const n = scopeCountries(scope).length;
   const p = scope === 'world' ? null : regionProgress(scope);
   const best = getBest(scope);

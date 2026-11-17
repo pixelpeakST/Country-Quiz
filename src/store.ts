@@ -270,3 +270,90 @@ export function shuffle<T>(arr: T[]): T[] {
   }
   return a;
 }
+
+// ---------------------------------------------------------------- Recent and stats
+
+const RECENT_KEY = 'country-quiz:recent';
+
+/** Remember the region (or 'world') opened most recently on this device. */
+export function setRecent(scope: RegionId | 'world') {
+  try {
+    localStorage.setItem(RECENT_KEY, JSON.stringify({ scope, at: Date.now() }));
+  } catch {
+    /* not important if it can't be saved */
+  }
+}
+
+export function getRecent(): { scope: RegionId | 'world'; at: number } | null {
+  try {
+    const raw = localStorage.getItem(RECENT_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+export interface ModeStats {
+  answers: number;
+  correct: number;
+}
+
+export interface RegionStats {
+  total: number;
+  learned: number;
+  due: number;
+  seen: number;
+  find: ModeStats;
+  name: ModeStats;
+  lastPlayed: number | null;
+  /** Countries missed most often (most misses first), at most 5. */
+  hardest: { id: string; misses: number; answers: number }[];
+  /** Next time something becomes due, if nothing is due now. */
+  nextDue: number | null;
+}
+
+export function regionStats(region: RegionId | 'world'): RegionStats {
+  const list = region === 'world' ? COUNTRIES : regionCountries(region);
+  const ids = new Set(list.map((c) => c.id));
+  const find: ModeStats = { answers: 0, correct: 0 };
+  const name: ModeStats = { answers: 0, correct: 0 };
+  const per = new Map<string, { misses: number; answers: number }>();
+  let lastPlayed: number | null = null;
+  for (const e of data.log) {
+    if (!ids.has(e.country)) continue;
+    const m = e.mode === 'find' ? find : name;
+    m.answers++;
+    if (e.correct) m.correct++;
+    const p = per.get(e.country) ?? { misses: 0, answers: 0 };
+    p.answers++;
+    if (!e.correct) p.misses++;
+    per.set(e.country, p);
+    if (lastPlayed === null || e.t > lastPlayed) lastPlayed = e.t;
+  }
+  const hardest = [...per.entries()]
+    .filter(([, p]) => p.misses > 0)
+    .sort((a, b) => b[1].misses - a[1].misses || b[1].misses / b[1].answers - a[1].misses / a[1].answers)
+    .slice(0, 5)
+    .map(([id, p]) => ({ id, ...p }));
+  const now = Date.now();
+  let due = 0;
+  let nextDue: number | null = null;
+  for (const c of list) {
+    const card = getCard('find', c.id);
+    if (!card) continue;
+    const t = card.due.getTime();
+    if (t <= now) due++;
+    else if (nextDue === null || t < nextDue) nextDue = t;
+  }
+  return {
+    total: list.length,
+    learned: list.filter((c) => isLearned('find', c.id)).length,
+    due,
+    seen: per.size,
+    find,
+    name,
+    lastPlayed,
+    hardest,
+    nextDue: due ? null : nextDue,
+  };
+}

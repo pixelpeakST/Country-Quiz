@@ -11,7 +11,7 @@ export default defineConfig({
         name: 'Country Quiz',
         short_name: 'Countries',
         description: 'Learn where every country in the world is, one region at a time.',
-        theme_color: '#1f6f5c',
+        theme_color: '#ffffff',
         background_color: '#f6f8f7',
         display: 'standalone',
         orientation: 'any',
