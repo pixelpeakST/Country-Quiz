@@ -128,7 +128,7 @@ main { padding: 16px; max-width: 640px; width: 100%; margin: 0 auto; }
 .hero .progress { margin-top: 14px; }
 /* Tip: a short headline with an info button that unfolds the rest. */
 .tip { color: var(--muted); margin: 18px 0; }
-.tip-head { display: flex; align-items: center; gap: 1.2em; } /* about a tab of space */
+.tip-head { display: flex; align-items: center; gap: 8px; }
 .tip-head p { margin: 0; font: 400 1.15rem/1.3 var(--font-round); color: var(--text); }
 .info {
   flex: none; width: 1.3em; height: 1.3em; min-height: 0; padding: 0; border-radius: 50%;
@@ -335,12 +335,12 @@ button.icon, .arrow { font-family: system-ui, -apple-system, sans-serif; }
 
 .bars { display: grid; grid-template-columns: repeat(14, 1fr); gap: 4px; height: 120px; align-items: end; }
 .bar-col { height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 4px; }
-.bar {
+.gbar {
   width: 100%; max-width: 16px; border-radius: 6px 6px 3px 3px; background: color-mix(in srgb, var(--accent) 55%, var(--border));
   transform-origin: bottom; animation: grow var(--dur, 0.8s) var(--spring) var(--delay, 0.1s) backwards;
 }
-.bar-col.today .bar { background: var(--accent); }
-.bar.zero, .bar-col.today .bar.zero { background: var(--border); }
+.bar-col.today .gbar { background: var(--accent); }
+.gbar.zero, .bar-col.today .gbar.zero { background: var(--border); }
 .bar-label { font: 400 0.7rem var(--font-round); color: var(--muted); }
 .bar-col.today .bar-label { color: var(--text); }
 @keyframes grow { from { transform: scaleY(0); } }
