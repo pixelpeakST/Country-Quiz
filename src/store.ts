@@ -190,6 +190,11 @@ export function clearLocalProgress() {
   data.dirty.events = [];
   data.dirty.best = [];
   save();
+  try {
+    localStorage.removeItem(ACTIVE_KEY);
+  } catch {
+    /* ignore */
+  }
 }
 
 /** A country counts as "learned" once it has graduated to review and was last answered right. */
@@ -369,4 +374,100 @@ export function regionStats(region: RegionId | 'world'): RegionStats {
     hardest,
     nextDue: due ? null : nextDue,
   };
+}
+
+// ---------------------------------------------------------------- Activity and streaks
+
+const ACTIVE_KEY = 'country-quiz:active-days'; // days with a timed challenge (those aren't in the answer log)
+const CELEBRATED_KEY = 'country-quiz:celebrated';
+const DAY = 86_400_000;
+
+/** Local calendar day as a number (days since epoch in local time). */
+const dayOf = (t: number) => {
+  const d = new Date(t);
+  return Math.round(new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime() / DAY);
+};
+
+function readJSON<T>(key: string, fallback: T): T {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as T) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+function writeJSON(key: string, v: unknown) {
+  try {
+    localStorage.setItem(key, JSON.stringify(v));
+  } catch {
+    /* ignore */
+  }
+}
+
+/** Note activity that isn't an answer (a timed challenge). */
+export function markActive(at = Date.now()) {
+  const list = readJSON<number[]>(ACTIVE_KEY, []);
+  list.push(at);
+  writeJSON(ACTIVE_KEY, list.slice(-500));
+}
+
+export interface Activity {
+  /** Answers per day for the last `days` days, oldest first; last entry is today. */
+  perDay: { day: number; count: number }[];
+  /** Consecutive active days ending today, or yesterday if today is still open. */
+  streak: number;
+  /** True when the streak counts today. */
+  doneToday: boolean;
+  best: number;
+  lastAt: number | null;
+  /** Local day number of today, for labeling. */
+  today: number;
+}
+
+export function activity(days = 14): Activity {
+  const counts = new Map<number, number>();
+  let lastAt: number | null = null;
+  const bump = (t: number, n: number) => {
+    const d = dayOf(t);
+    counts.set(d, (counts.get(d) ?? 0) + n);
+    if (lastAt === null || t > lastAt) lastAt = t;
+  };
+  for (const e of data.log) bump(e.t, 1);
+  for (const t of readJSON<number[]>(ACTIVE_KEY, [])) bump(t, 0);
+  const today = dayOf(Date.now());
+  const perDay = Array.from({ length: days }, (_, i) => {
+    const day = today - (days - 1 - i);
+    return { day, count: counts.get(day) ?? 0 };
+  });
+  const doneToday = counts.has(today);
+  let streak = 0;
+  for (let d = doneToday ? today : today - 1; counts.has(d); d--) streak++;
+  // Longest run ever.
+  let best = 0;
+  let run = 0;
+  let prev = NaN;
+  for (const d of [...counts.keys()].sort((a, b) => a - b)) {
+    run = d === prev + 1 ? run + 1 : 1;
+    best = Math.max(best, run);
+    prev = d;
+  }
+  return { perDay, streak, doneToday, best, lastAt, today };
+}
+
+/** Streak milestones: 3, 5, 10, 15, 20, ... */
+export const isMilestone = (n: number) => n === 3 || (n >= 5 && n % 5 === 0);
+
+/**
+ * Returns the streak to celebrate if today just reached a milestone that hasn't
+ * been celebrated yet for this streak, and remembers it.
+ */
+export function streakToCelebrate(): number | null {
+  const a = activity(1);
+  if (!a.doneToday || !isMilestone(a.streak)) return null;
+  const startDay = a.today - a.streak + 1;
+  const key = `${startDay}:${a.streak}`;
+  const done = readJSON<string[]>(CELEBRATED_KEY, []);
+  if (done.includes(key)) return null;
+  writeJSON(CELEBRATED_KEY, [...done, key].slice(-50));
+  return a.streak;
 }
