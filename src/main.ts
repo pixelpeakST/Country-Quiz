@@ -9,7 +9,7 @@ import { REGION_ART } from './regionArt';
 import { COUNTRIES, COUNTRY_BY_ID, matchAnswer, normalizeAnswer, REGIONS, regionCountries, type RegionId } from './countries';
 import { WorldMap } from './map';
 import {
-  getBest, getNote, getRecent, pickSession, recordAnswer, regionProgress, regionStats, setNote, setRecent, shuffle,
+  activity, getBest, getNote, getRecent, markActive, pickSession, streakToCelebrate, recordAnswer, regionProgress, regionStats, setNote, setRecent, shuffle,
   submitScore, totalLearned, type Mode,
 } from './store';
 import { initSync, onSyncState, resetEverywhere, signIn, signOut, signUp, syncNow, syncState } from './sync';
@@ -135,6 +135,7 @@ function home() {
     ),
   );
   onHome = true;
+  celebrateIfStreak(600);
 }
 
 // ---------------------------------------------------------------- Home pieces
@@ -150,7 +151,7 @@ function tipLine() {
     info.ariaExpanded = String(open);
   });
   tip.append(
-    h('div.tip-head', {}, h('p', { textContent: 'One at a time' }), info),
+    h('div.tip-head', {}, info, h('p', { textContent: 'One at a time' })),
     h('div.tip-more', {}, h('div', {}, h('p', { textContent: TIP_REST }))),
   );
   return tip;
@@ -232,13 +233,7 @@ function sideMenu() {
     'Menu',
     'Country Quiz',
     'Menu',
-    h(
-      'nav.side-nav',
-      {},
-      h('button.side-link', { type: 'button', onclick: () => { closeDrawer(); home(); } }, h('span', { textContent: 'Home' })),
-      ...REGIONS.map((r) => h('button.side-link', { type: 'button', onclick: () => { closeDrawer(); regionMenu(r.id); } }, h('span', { textContent: r.name }))),
-      h('button.side-link', { type: 'button', onclick: () => { closeDrawer(); regionMenu('world'); } }, h('span', { textContent: 'Whole world' })),
-    ),
+    activityPanel(),
     h(
       'section.settings',
       {},
@@ -247,6 +242,121 @@ function sideMenu() {
       h('div.setting-group', {}, h('span.setting-label', { textContent: 'Progress' }), resetButton()),
     ),
   );
+}
+
+// ---------------------------------------------------------------- Activity, streaks, celebrations
+
+const DAY_LETTERS = ['s', 'm', 't', 'w', 't', 'f', 's'];
+// Day numbers are local midnights rounded to whole days, so the UTC weekday of day * 24h is the local weekday.
+const dayLetter = (day: number) => DAY_LETTERS[new Date(day * 86_400_000).getUTCDay()];
+
+function activityPanel() {
+  const a = activity(14);
+  const week = a.perDay.slice(-7);
+  const max = Math.max(1, ...a.perDay.map((d) => d.count));
+  const thisWeek = week.reduce((n, d) => n + d.count, 0);
+  const activeDays = a.perDay.filter((d) => d.count > 0).length;
+
+  const streakCard = a.streak
+    ? h(
+        'div.streak-card.on',
+        {},
+        h('span.flame', { ariaHidden: 'true', textContent: '🔥' }),
+        h('div', {},
+          h('div.streak-num', { textContent: `${a.streak} day streak` }),
+          h('div.muted.small', { textContent: a.doneToday ? 'you practiced today. see you tomorrow!' : 'practice today to keep it going' }),
+        ),
+      )
+    : h(
+        'div.streak-card',
+        {},
+        h('span.flame', { ariaHidden: 'true', textContent: '🌱' }),
+        h('div', {},
+          h('div.streak-num', { textContent: a.lastAt ? `last practice ${timeAgo(a.lastAt)}` : 'no practice yet' }),
+          h('div.muted.small', { textContent: 'practice today to start a streak' }),
+        ),
+      );
+
+  const days = h(
+    'div.day-tracker',
+    { role: 'list', ariaLabel: 'last 7 days' },
+    ...week.map((d, i) =>
+      h(
+        `div.day${d.count || (i === 6 && a.doneToday) ? '.done' : ''}${i === 6 ? '.today' : ''}`,
+        { role: 'listitem', ariaLabel: `${d.count} answers`, style: `--i:${i}` },
+        h('span.day-dot', { textContent: d.count ? '✓' : '' }),
+        h('span.day-letter', { textContent: dayLetter(d.day) }),
+      ),
+    ),
+  );
+
+  const bars = h(
+    'div.bars',
+    { role: 'img', ariaLabel: `answers per day for the last 14 days, ${thisWeek} this week` },
+    ...a.perDay.map((d, i) =>
+      h(
+        `div.bar-col${i === a.perDay.length - 1 ? '.today' : ''}`,
+        {},
+        h(`div.bar${d.count ? '' : '.zero'}`, {
+          title: `${d.count} answers`,
+          // Each bar grows at its own pace.
+          style: `height:${d.count ? Math.max(6, (d.count / max) * 100) : 3}%;--dur:${(0.55 + Math.random() * 0.7).toFixed(2)}s;--delay:${(0.1 + i * 0.03).toFixed(2)}s`,
+        }),
+        h('span.bar-label', { textContent: dayLetter(d.day) }),
+      ),
+    ),
+  );
+
+  return h(
+    'section.activity',
+    {},
+    streakCard,
+    days,
+    h('div.activity-stats', {},
+      h('div', {}, h('strong', { textContent: String(thisWeek) }), h('span.muted.small', { textContent: 'answers in 7 days' })),
+      h('div', {}, h('strong', { textContent: `${activeDays}/14` }), h('span.muted.small', { textContent: 'days active' })),
+      h('div', {}, h('strong', { textContent: String(a.best) }), h('span.muted.small', { textContent: 'best streak' })),
+    ),
+    h('h3', { textContent: 'last two weeks' }),
+    bars,
+  );
+}
+
+function celebrateIfStreak(delay: number) {
+  const n = streakToCelebrate();
+  if (n) setTimeout(() => celebrate(n), delay);
+}
+
+/** A little popping celebration for streak milestones. */
+function celebrate(n: number) {
+  const colors = ['var(--accent)', 'var(--target)', 'var(--good)', '#ff8fb1', '#7cc6ff'];
+  const burst = h('div.burst', { ariaHidden: 'true' });
+  for (let i = 0; i < 26; i++) {
+    const angle = (i / 26) * Math.PI * 2 + Math.random() * 0.4;
+    const dist = 90 + Math.random() * 90;
+    burst.append(
+      h(`span.confetti${i % 3 === 0 ? '.round' : ''}`, {
+        style: `--x:${(Math.cos(angle) * dist).toFixed(0)}px;--y:${(Math.sin(angle) * dist).toFixed(0)}px;--r:${Math.round(Math.random() * 540 - 270)}deg;background:${colors[i % colors.length]};animation-delay:${(Math.random() * 0.12).toFixed(2)}s`,
+      }),
+    );
+  }
+  const el = h(
+    'div.celebrate',
+    { role: 'status' },
+    burst,
+    h('div.celebrate-card', {},
+      h('div.celebrate-emoji', { textContent: n >= 10 ? '🏆' : '🔥' }),
+      h('div.celebrate-num', { textContent: `${n} day streak!` }),
+      h('div.muted', { textContent: n === 3 ? 'nice start, keep it rolling' : 'you are on fire' }),
+    ),
+  );
+  const close = () => {
+    el.classList.add('closing');
+    setTimeout(() => el.remove(), 300);
+  };
+  el.addEventListener('click', close);
+  document.body.append(el);
+  setTimeout(close, 3200);
 }
 
 function resetButton() {
@@ -684,6 +794,7 @@ function practice(scope: Scope, mode: Mode) {
         h('button', { textContent: 'Back to menu', onclick: () => regionMenu(scope) }),
       ),
     );
+    celebrateIfStreak(500);
   }
 
   if (!queue.length) {
@@ -767,6 +878,10 @@ function challenge(scope: Scope) {
     const missed = list.filter((c) => !found.has(c.id));
     for (const c of missed) map.mark(c.id, 'reveal');
     const isBest = found.size > 0 && submitScore(scope, { found: found.size, total, ms, at: Date.now() });
+    if (found.size) {
+      markActive();
+      celebrateIfStreak(900);
+    }
     // Let the missed ones be tapped to see their names.
     map.el.addEventListener('click', (ev) => {
       const id = (ev.target as SVGElement).dataset?.id;
