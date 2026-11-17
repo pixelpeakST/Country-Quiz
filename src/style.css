@@ -123,15 +123,9 @@ main { padding: 16px; max-width: 640px; width: 100%; margin: 0 auto; }
 
 .regions { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
 .region-card {
-  display: flex; flex-direction: column; text-align: left;
-  background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden;
+  display: flex; flex-direction: column; gap: 4px; text-align: left; padding: 12px 16px;
 }
 .region-card.world { grid-column: 1 / -1; border-color: var(--accent); }
-.region-open { display: flex; flex-direction: column; gap: 4px; text-align: left; border: none; border-radius: 0; background: none; padding: 12px 16px 10px; }
-.stats-link {
-  border: none; border-top: 1px solid var(--border); border-radius: 0; background: none;
-  min-height: 40px; padding: 8px 16px; text-align: left; font-size: 0.875rem; font-weight: 600; color: var(--accent);
-}
 .region-card.recent { grid-column: 1 / -1; gap: 4px; padding: 12px 16px 14px; background: var(--recent); border-color: transparent; }
 .eyebrow { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
 
@@ -161,6 +155,16 @@ main { padding: 16px; max-width: 640px; width: 100%; margin: 0 auto; }
 .hardest { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; }
 .hardest li { padding-left: 4px; }
 .hardest li span:first-child { margin-right: 6px; }
+/* Side menu: navigation, then Settings (all settings live here). */
+.menu-btn { font-size: 1.4rem; }
+.side-nav { display: flex; flex-direction: column; margin: 0 -8px; }
+.side-link { border: none; background: none; text-align: left; border-radius: 10px; padding: 10px 8px; min-height: 44px; }
+.side-link:active { background: var(--bg); }
+.settings { display: flex; flex-direction: column; gap: 14px; border-top: 1px solid var(--border); padding-top: 16px; }
+.settings h3 { margin: 0; }
+.setting-group { display: flex; flex-direction: column; gap: 8px; }
+.setting-label { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.link.danger { color: var(--bad); align-self: flex-start; padding-left: 0; }
 .drawer-actions { margin-top: auto; display: flex; flex-direction: column; }
 @keyframes fade-in { from { opacity: 0; } }
 @keyframes fade-out { to { opacity: 0; } }
@@ -176,6 +180,13 @@ main { padding: 16px; max-width: 640px; width: 100%; margin: 0 auto; }
 .menu-item { text-align: left; display: flex; flex-direction: column; gap: 2px; }
 .menu .big { text-align: center; }
 .menu > p { margin: 0; }
+.arrow-item { flex-direction: row; align-items: center; justify-content: space-between; gap: 12px; }
+.arrow-item > span:first-child { display: flex; flex-direction: column; gap: 2px; }
+.arrow { font-size: 1.8rem; line-height: 1; color: var(--accent); animation: nudge 1.2s ease-in-out 0.3s 2; transition: transform 0.15s; }
+.arrow-item:active .arrow { transform: translateX(6px); }
+@media (hover: hover) { .arrow-item:hover .arrow { transform: translateX(6px); } }
+@keyframes nudge { 50% { transform: translateX(6px); } }
+@media (prefers-reduced-motion: reduce) { .arrow { animation: none; transition: none; } }
 
 /* Map screens fill the viewport: bar, map, panel. */
 .screen { display: flex; flex-direction: column; height: 100dvh; }
