@@ -617,7 +617,7 @@ function hookEditor(id: string, onDone?: () => void) {
   const ta = <HTMLTextAreaElement>h('textarea', {
     value: getNote(id),
     rows: 2,
-    placeholder: `How will you remember where ${c.name} is?`,
+    placeholder: `how will you remember where ${c.name.toLowerCase()} is?`,
   });
   return h(
     'div.hook-editor',
@@ -735,12 +735,15 @@ function practice(scope: Scope, mode: Mode) {
       map.focus(id);
       const input = <HTMLInputElement>h('input', {
         type: 'text',
-        placeholder: 'Country name',
+        // Words like "country" or "name" make iOS offer contact AutoFill.
+        placeholder: 'your answer',
+        name: 'quiz-answer',
         autocomplete: 'off',
         autocapitalize: 'words',
         spellcheck: false,
         enterKeyHint: 'done',
       });
+      input.setAttribute('autocorrect', 'off');
       const form = h(
         'form.answer',
         {
@@ -785,6 +788,7 @@ function practice(scope: Scope, mode: Mode) {
     tries++;
     map.mark(tapped, 'wrong');
     map.label(tapped, COUNTRY_BY_ID.get(tapped)!.name, 'wrong');
+    map.ring(tapped);
     const fb = panel.querySelector('.feedback') ?? panel.appendChild(h('p.feedback'));
     fb.textContent = tries >= 3 ? '' : `That's ${COUNTRY_BY_ID.get(tapped)!.name}. ${3 - tries} ${tries === 2 ? 'try' : 'tries'} left.`;
     if (tries >= 3) reveal();
@@ -801,7 +805,6 @@ function practice(scope: Scope, mode: Mode) {
       note ?? '',
       h('button.primary', { textContent: 'Next', onclick: next }),
     );
-    if (tries === 0 && !note) setTimeout(() => idx < queue.length && queue[idx] === id && answered && next(), 900);
   }
 
   function reveal() {
@@ -810,6 +813,8 @@ function practice(scope: Scope, mode: Mode) {
     finishQuestion(false);
     map.mark(id, 'reveal');
     map.label(id, c.name, 'reveal');
+    map.ring(id);
+    map.fadeOthers(id);
     map.focus(id);
     panel.replaceChildren(
       h('p.prompt.bad', {}, 'This is ', h('strong', { textContent: c.name }), '. It will come back at the end.'),
@@ -877,12 +882,14 @@ function challenge(scope: Scope) {
   const count = h('span.count', { textContent: `0 / ${total}` });
   const input = <HTMLInputElement>h('input', {
     type: 'text',
-    placeholder: 'Type a country…',
+    placeholder: 'type an answer…',
+    name: 'quiz-answer',
     autocomplete: 'off',
     autocapitalize: 'words',
     spellcheck: false,
     disabled: true,
   });
+  input.setAttribute('autocorrect', 'off');
   const startBtn = h('button.primary', { textContent: `Start (${fmtTime(limitMs)})`, onclick: begin });
   const giveUp = h('button.link', { textContent: 'Give up', onclick: () => end() });
   const recent = h('p.feedback');
@@ -935,6 +942,7 @@ function challenge(scope: Scope) {
       if (id && ids.has(id)) {
         map.clearLabels();
         map.label(id, COUNTRY_BY_ID.get(id)!.name, found.has(id) ? 'correct' : 'reveal');
+        if (!found.has(id)) map.ring(id);
       }
     });
     panel.replaceChildren(
@@ -954,6 +962,21 @@ onSyncState(() => {
   if (box && next) box.replaceWith(next);
 });
 home();
+// iPhone keyboard: iOS shrinks only the visual viewport and scrolls the page
+// to keep the input in view, pushing the map off screen. Instead, size the
+// quiz screen to the space above the keyboard and keep the page unscrolled.
+const vv = window.visualViewport;
+if (vv) {
+  const syncViewport = () => {
+    const kb = window.innerHeight - vv.height > 120;
+    document.documentElement.classList.toggle('kb-open', kb);
+    document.documentElement.style.setProperty('--app-h', kb ? `${Math.round(vv.height)}px` : '');
+    if (kb && (window.scrollY || vv.offsetTop)) window.scrollTo(0, 0);
+  };
+  vv.addEventListener('resize', syncViewport);
+  vv.addEventListener('scroll', syncViewport);
+}
+
 initSync(() => {
   if (onHome) home();
 });

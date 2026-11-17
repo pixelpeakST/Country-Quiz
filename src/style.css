@@ -75,6 +75,8 @@ html, body { margin: 0; height: 100%; background: var(--bg); }
 /* Everything is lowercase; what you type stays as typed. */
 body, button, select, option { text-transform: lowercase; }
 input, textarea { text-transform: none; }
+/* Placeholders follow the all-lowercase UI; what you type keeps its case. */
+input::placeholder, textarea::placeholder { text-transform: lowercase; }
 #app { min-height: 100dvh; display: flex; flex-direction: column; }
 
 button {
@@ -89,7 +91,7 @@ button {
 }
 button.primary { background: var(--accent); color: var(--accent-text); border-color: transparent; font-family: var(--font-round); font-weight: 800; }
 button.small { padding: 8px 12px; min-height: 36px; font-size: 0.9rem; }
-button.link { background: none; border: none; color: var(--accent); padding: 8px; min-height: 0; text-decoration: underline; }
+button.link { background: none; border: none; color: var(--accent); padding: 8px; min-height: 0; text-decoration: none; }
 button.icon { width: 44px; height: 44px; padding: 0; font-size: 1.6rem; line-height: 1; border: none; background: none; }
 .icon-spacer { width: 44px; }
 
@@ -216,7 +218,12 @@ main { padding: 16px; max-width: 640px; width: 100%; margin: 0 auto; }
 @media (prefers-reduced-motion: reduce) { .arrow { animation: none; transition: none; } }
 
 /* Map screens fill the viewport: bar, map, panel. */
-.screen { display: flex; flex-direction: column; height: 100dvh; }
+.screen { display: flex; flex-direction: column; height: var(--app-h, 100dvh); overflow: hidden; }
+/* While the keyboard is up, give the map every spare pixel: drop the title row
+   (keeping the status bar spacer) and let the panel shrink to its content. */
+.kb-open .screen .bar > * { display: none; }
+.kb-open .screen .bar { border-bottom: 0; padding-bottom: 0; }
+.kb-open .screen .panel { height: auto; padding-bottom: 12px; }
 .map { flex: 1; min-height: 0; background: var(--sea); position: relative; overflow: hidden; touch-action: none; }
 .map svg { display: block; }
 .panel {
@@ -226,11 +233,16 @@ main { padding: 16px; max-width: 640px; width: 100%; margin: 0 auto; }
   display: flex;
   flex-direction: column;
   gap: 8px;
-  height: 200px;
-  overflow-y: auto;
+  /* Fixed height (so the map doesn't jump between questions) that leaves room
+     for every panel state above the home indicator. It never scrolls. */
+  height: calc(196px + max(env(safe-area-inset-bottom), 12px));
+  overflow: hidden;
+  overscroll-behavior: none;
 }
 .panel p { margin: 0; }
 .prompt { font-size: 1.15rem; }
+/* Country names in prompts: Nunito reads more clearly than heavy Sniglet. */
+.prompt strong { font-family: var(--font-body); font-weight: 700; }
 .qhead { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .feedback { color: var(--muted); min-height: 1.2em; }
 .hook { background: var(--bg); border-radius: 10px; padding: 8px 10px; font-size: 0.95rem; }
@@ -253,20 +265,23 @@ main { padding: 16px; max-width: 640px; width: 100%; margin: 0 auto; }
 .map .country.correct { fill: var(--good); }
 .map .country.wrong { fill: var(--bad); }
 .map .country.target { fill: var(--target); }
-.map .country.reveal { fill: var(--bad); animation: pulse 1s ease-in-out 3; }
+.map .country.faded { fill: color-mix(in srgb, var(--bad) 30%, var(--land)); }
+.map .country.reveal { fill: var(--bad); }
 .map .dot.correct, .map .dot.wrong, .map .dot.target, .map .dot.reveal { stroke: var(--country-stroke); stroke-width: 1.5; }
-@keyframes pulse { 50% { fill-opacity: 0.35; } }
+/* Steady ring around a revealed tiny country (no flashing). */
+.map .rings circle { fill: none; stroke: var(--bad); stroke-width: 2.5; vector-effect: non-scaling-stroke; pointer-events: none; }
 
 .map .labels text {
   fill: var(--text);
   font-weight: 700;
   paint-order: stroke;
   stroke: var(--bg);
-  stroke-width: 3px;
   stroke-linejoin: round;
   pointer-events: none;
 }
-.map .labels text.wrong { fill: var(--bad); }
+.map .labels text.wrong, .map .labels text.reveal { fill: var(--bad); }
+.map .labels text.correct { fill: var(--good); }
+.map .labels text.faded { fill: var(--muted); font-weight: 600; }
 
 .shake { animation: shake 0.35s; }
 @keyframes shake { 25% { transform: translateX(-6px); } 75% { transform: translateX(6px); } }
