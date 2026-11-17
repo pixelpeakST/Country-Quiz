@@ -218,7 +218,7 @@ main { padding: 16px; max-width: 640px; width: 100%; margin: 0 auto; }
 @media (prefers-reduced-motion: reduce) { .arrow { animation: none; transition: none; } }
 
 /* Map screens fill the viewport: bar, map, panel. */
-.screen { display: flex; flex-direction: column; height: 100dvh; }
+.screen { display: flex; flex-direction: column; height: 100dvh; overflow: hidden; }
 .map { flex: 1; min-height: 0; background: var(--sea); position: relative; overflow: hidden; touch-action: none; }
 .map svg { display: block; }
 .panel {
@@ -228,8 +228,11 @@ main { padding: 16px; max-width: 640px; width: 100%; margin: 0 auto; }
   display: flex;
   flex-direction: column;
   gap: 8px;
-  height: 200px;
-  overflow-y: auto;
+  /* Fixed height (so the map doesn't jump between questions) that leaves room
+     for every panel state above the home indicator. It never scrolls. */
+  height: calc(196px + max(env(safe-area-inset-bottom), 12px));
+  overflow: hidden;
+  overscroll-behavior: none;
 }
 .panel p { margin: 0; }
 .prompt { font-size: 1.15rem; }
