@@ -735,12 +735,15 @@ function practice(scope: Scope, mode: Mode) {
       map.focus(id);
       const input = <HTMLInputElement>h('input', {
         type: 'text',
-        placeholder: 'Country name',
+        // Words like "country" or "name" make iOS offer contact AutoFill.
+        placeholder: 'your answer',
+        name: 'quiz-answer',
         autocomplete: 'off',
         autocapitalize: 'words',
         spellcheck: false,
         enterKeyHint: 'done',
       });
+      input.setAttribute('autocorrect', 'off');
       const form = h(
         'form.answer',
         {
@@ -880,12 +883,14 @@ function challenge(scope: Scope) {
   const count = h('span.count', { textContent: `0 / ${total}` });
   const input = <HTMLInputElement>h('input', {
     type: 'text',
-    placeholder: 'Type a country…',
+    placeholder: 'type an answer…',
+    name: 'quiz-answer',
     autocomplete: 'off',
     autocapitalize: 'words',
     spellcheck: false,
     disabled: true,
   });
+  input.setAttribute('autocorrect', 'off');
   const startBtn = h('button.primary', { textContent: `Start (${fmtTime(limitMs)})`, onclick: begin });
   const giveUp = h('button.link', { textContent: 'Give up', onclick: () => end() });
   const recent = h('p.feedback');
@@ -958,6 +963,21 @@ onSyncState(() => {
   if (box && next) box.replaceWith(next);
 });
 home();
+// iPhone keyboard: iOS shrinks only the visual viewport and scrolls the page
+// to keep the input in view, pushing the map off screen. Instead, size the
+// quiz screen to the space above the keyboard and keep the page unscrolled.
+const vv = window.visualViewport;
+if (vv) {
+  const syncViewport = () => {
+    const kb = window.innerHeight - vv.height > 120;
+    document.documentElement.classList.toggle('kb-open', kb);
+    document.documentElement.style.setProperty('--app-h', kb ? `${Math.round(vv.height)}px` : '');
+    if (kb && (window.scrollY || vv.offsetTop)) window.scrollTo(0, 0);
+  };
+  vv.addEventListener('resize', syncViewport);
+  vv.addEventListener('scroll', syncViewport);
+}
+
 initSync(() => {
   if (onHome) home();
 });

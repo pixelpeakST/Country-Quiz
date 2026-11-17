@@ -91,7 +91,7 @@ button {
 }
 button.primary { background: var(--accent); color: var(--accent-text); border-color: transparent; font-family: var(--font-round); font-weight: 800; }
 button.small { padding: 8px 12px; min-height: 36px; font-size: 0.9rem; }
-button.link { background: none; border: none; color: var(--accent); padding: 8px; min-height: 0; text-decoration: underline; }
+button.link { background: none; border: none; color: var(--accent); padding: 8px; min-height: 0; text-decoration: none; }
 button.icon { width: 44px; height: 44px; padding: 0; font-size: 1.6rem; line-height: 1; border: none; background: none; }
 .icon-spacer { width: 44px; }
 
@@ -218,7 +218,12 @@ main { padding: 16px; max-width: 640px; width: 100%; margin: 0 auto; }
 @media (prefers-reduced-motion: reduce) { .arrow { animation: none; transition: none; } }
 
 /* Map screens fill the viewport: bar, map, panel. */
-.screen { display: flex; flex-direction: column; height: 100dvh; overflow: hidden; }
+.screen { display: flex; flex-direction: column; height: var(--app-h, 100dvh); overflow: hidden; }
+/* While the keyboard is up, give the map every spare pixel: drop the title row
+   (keeping the status bar spacer) and let the panel shrink to its content. */
+.kb-open .screen .bar > * { display: none; }
+.kb-open .screen .bar { border-bottom: 0; padding-bottom: 0; }
+.kb-open .screen .panel { height: auto; padding-bottom: 12px; }
 .map { flex: 1; min-height: 0; background: var(--sea); position: relative; overflow: hidden; touch-action: none; }
 .map svg { display: block; }
 .panel {
