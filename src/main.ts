@@ -326,7 +326,7 @@ function activityPanel() {
 function flameIcon(cls: string) {
   const wrap = h(`span.${cls}`, { ariaHidden: 'true' });
   wrap.innerHTML =
-    '<svg viewBox="0 0 64 64" class="flame-svg"><rect width="64" height="64" rx="14" class="flame-tile"/>' +
+    '<svg viewBox="15 5 34 52" class="flame-svg"><rect width="64" height="64" rx="14" class="flame-tile"/>' +
     '<path class="flame-shape" d="M32 7c1.5 9 15 15.5 15 31a15 15 0 0 1-30 0c0-8.5 4-13.5 7.5-17 .6 5 2.6 8 6 9.5C28.5 21.5 29 13 32 7z"/>' +
     '<circle class="flame-dot" cx="32" cy="41" r="6.5"/></svg>';
   return wrap;
@@ -344,12 +344,22 @@ function numberWord(n: number): string {
   return TENS[Math.floor(n / 10)] + (n % 10 ? `-${ONES[n % 10]}` : '');
 }
 
+/** A tall, skinny exclamation mark with rounded ends, drawn so it can match the text height. */
+function bangMark() {
+  const wrap = h('span.bang', { ariaHidden: 'true' });
+  wrap.innerHTML =
+    '<svg viewBox="0 0 12 60" preserveAspectRatio="xMidYMax meet">' +
+    '<path d="M6 1.5a4.5 4.5 0 0 1 4.5 4.6L8.2 40.2a2.2 2.2 0 0 1-4.4 0L1.5 6.1A4.5 4.5 0 0 1 6 1.5z"/>' +
+    '<circle cx="6" cy="54.2" r="4.3"/></svg>';
+  return wrap;
+}
+
 /** "five" centered above "day streak" (or "101 day streak" on one line past 100). */
 function streakTitle(n: number, cls: string, bang = false) {
   const text = n > 100
     ? h('span.streak-lines', {}, h('span', { textContent: `${n} day streak` }))
     : h('span.streak-lines', {}, h('span.streak-word', { textContent: numberWord(n) }), h('span', { textContent: 'day streak' }));
-  return h(`div.${cls}`, {}, text, bang ? h('span.bang', { ariaHidden: 'true', textContent: '!' }) : null);
+  return h(`div.${cls}`, {}, text, bang ? bangMark() : null);
 }
 
 function celebrateIfStreak(delay: number) {
