@@ -17,9 +17,10 @@ const ALL_SHAPES: Shape[] = (
 ).features.filter((f) => f.properties.name !== 'Antarctica');
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
-const DOT_RADIUS = 6; // screen px
+const DOT_RADIUS = 5.1; // screen px
 const TINY_AREA = 40; // px² at normal zoom, below which a country also gets a dot
 const DOT_HIDE_AREA = 400; // px² on screen; once zoomed in this far, the dot is hidden
+const RING_RADIUS = 14; // screen px, ring drawn around a revealed tiny country
 
 /** Center of a country's largest polygon (so island groups don't land in the sea between them). */
 function mainCentroid(f: Shape): [number, number] {
@@ -58,6 +59,16 @@ export class WorldMap {
   private resizeObs: ResizeObserver;
   private resizeTimer = 0;
   private labels: [id: string, text: string, cls: string][] = [];
+  private rings = new Set<string>();
+  /** Screen position of each tiny country's dot (they get a ring when revealed). */
+  private tinyXY = new Map<string, [number, number]>();
+  private mainPath = new Map<string, SVGPathElement>();
+  private tinyArea = new Map<string, number>();
+
+  /** True while a country is still too small to see, so it's shown as a dot. */
+  private showsDot(id: string) {
+    return this.tinyXY.has(id) && (this.tinyArea.get(id) ?? 0) * this.k * this.k < DOT_HIDE_AREA;
+  }
   private focused: string | null = null;
 
   constructor(private opts: MapOptions) {
@@ -114,9 +125,13 @@ export class WorldMap {
     const layer = (this.layer = this.svg.append('g'));
     const shapesG = this.layer.append('g').attr('class', 'shapes');
     const dotsG = this.layer.append('g').attr('class', 'dots');
+    this.layer.append('g').attr('class', 'rings');
     this.layer.append('g').attr('class', 'labels');
 
     const tinyIds = new Set<string>();
+    this.tinyXY.clear();
+    this.tinyArea.clear();
+    this.mainPath.clear();
     const shapeArea = new Map<string, number>();
     const centroids = new Map<string, [number, number]>();
 
@@ -134,6 +149,7 @@ export class WorldMap {
         // Only the country's main shape decides whether it is "tiny".
         if (f.properties.name === country.shapes[0]) {
           shapeArea.set(id, path.area(f));
+          this.mainPath.set(id, el);
           centroids.set(id, mainCentroid(f));
         }
       } else {
@@ -159,6 +175,8 @@ export class WorldMap {
       dot.dataset.area = String(shapeArea.get(id) ?? 0);
       dot.dataset.id = id;
       this.track(id, dot);
+      this.tinyXY.set(id, xy as [number, number]);
+      this.tinyArea.set(id, shapeArea.get(id) ?? 0);
       dotsG.node()!.appendChild(dot);
     }
 
@@ -196,10 +214,11 @@ export class WorldMap {
           .attr('display', function () {
             return Number(this.dataset.area) * k * k >= DOT_HIDE_AREA ? 'none' : null;
           });
-        layer.selectAll<SVGTextElement, unknown>('.labels text').attr('font-size', 15 / this.k);
+        this.scaleOverlays();
       });
     this.svg.call(this.zoomer).on('dblclick.zoom', null);
     this.k = 1;
+    for (const id of this.rings) this.drawRing(id);
     for (const [id, text, cls] of this.labels) this.drawLabel(id, text, cls);
     if (this.focused) this.focus(this.focused);
   }
@@ -235,25 +254,85 @@ export class WorldMap {
     this.drawLabel(id, text, cls);
   }
 
-  private drawLabel(id: string, text: string, cls: string) {
+  /** Bounding box of a country's main shape (or its dot), in map units. */
+  private anchorBox(id: string): { x: number; y: number; width: number; height: number } | null {
+    const xy = this.tinyXY.get(id);
+    if (xy && this.showsDot(id)) return { x: xy[0], y: xy[1], width: 0, height: 0 };
     const c = COUNTRY_BY_ID.get(id)!;
     const shape = ALL_SHAPES.find((f) => f.properties.name === c.shapes[0]);
-    const xy = this.projection(c.point ?? (shape ? mainCentroid(shape) : [0, 0]));
-    if (!xy) return;
+    const el = this.mainPath.get(id);
+    if (el) return el.getBBox();
+    const p = this.projection(c.point ?? (shape ? mainCentroid(shape) : [0, 0]));
+    return p ? { x: p[0], y: p[1], width: 0, height: 0 } : null;
+  }
+
+  private drawLabel(id: string, text: string, cls: string) {
+    // Sits just above the country (clear of its ring, if it has one) so the
+    // country itself stays visible underneath its name.
     this.layer
       .select('.labels')
       .append('text')
-      .attr('x', xy[0])
-      .attr('y', xy[1] - 10 / this.k)
+      .datum({ id })
       .attr('text-anchor', 'middle')
-      .attr('font-size', 15 / this.k)
       .attr('class', cls)
       .text(text);
+    this.scaleOverlays();
+  }
+
+  /** A steady ring around a tiny country so it's easy to spot. */
+  ring(id: string) {
+    if (!this.tinyXY.has(id) || this.rings.has(id)) return;
+    this.rings.add(id);
+    this.drawRing(id);
+  }
+
+  private drawRing(id: string) {
+    const xy = this.tinyXY.get(id);
+    if (!xy) return;
+    this.layer.select('.rings').append('circle').datum({ id }).attr('cx', xy[0]).attr('cy', xy[1]).attr('class', 'ring');
+    this.scaleOverlays();
+  }
+
+  /** Keep labels and rings the same size on screen at any zoom. */
+  private scaleOverlays() {
+    const k = this.k;
+    // A ring only while the country is dot-sized; once zoomed in, its red shape is enough.
+    this.layer
+      .selectAll<SVGCircleElement, { id: string }>('.rings circle')
+      .attr('r', RING_RADIUS / k)
+      .attr('display', (d) => (this.showsDot(d.id) ? null : 'none'));
+    this.layer.selectAll<SVGTextElement, { id: string }>('.labels text').each((d, i, els) => {
+      const b = this.anchorBox(d.id);
+      if (!b) return;
+      const ringed = this.rings.has(d.id) && this.showsDot(d.id);
+      select(els[i])
+        .attr('font-size', 15 / k)
+        .attr('stroke-width', 3 / k)
+        .attr('x', b.x + b.width / 2)
+        .attr('y', b.y - ((ringed ? RING_RADIUS : 0) + 6) / k);
+    });
+  }
+
+  /** Tone down every other labeled country so the answer stands out. */
+  fadeOthers(keep: string) {
+    for (const l of this.labels) {
+      if (l[0] === keep) continue;
+      l[2] = 'faded';
+      this.mark(l[0], 'faded');
+      this.rings.delete(l[0]);
+    }
+    if (!this.layer) return;
+    this.layer.select('.labels').selectAll('*').remove();
+    this.layer.select('.rings').selectAll('*').remove();
+    for (const id of this.rings) this.drawRing(id);
+    for (const [id, text, cls] of this.labels) this.drawLabel(id, text, cls);
   }
 
   clearLabels() {
     this.labels = [];
+    this.rings.clear();
     this.layer?.select('.labels').selectAll('*').remove();
+    this.layer?.select('.rings').selectAll('*').remove();
   }
 
   /** Zoom so the country is clearly visible (used when revealing an answer). */

@@ -617,7 +617,7 @@ function hookEditor(id: string, onDone?: () => void) {
   const ta = <HTMLTextAreaElement>h('textarea', {
     value: getNote(id),
     rows: 2,
-    placeholder: `How will you remember where ${c.name} is?`,
+    placeholder: `how will you remember where ${c.name.toLowerCase()} is?`,
   });
   return h(
     'div.hook-editor',
@@ -785,6 +785,7 @@ function practice(scope: Scope, mode: Mode) {
     tries++;
     map.mark(tapped, 'wrong');
     map.label(tapped, COUNTRY_BY_ID.get(tapped)!.name, 'wrong');
+    map.ring(tapped);
     const fb = panel.querySelector('.feedback') ?? panel.appendChild(h('p.feedback'));
     fb.textContent = tries >= 3 ? '' : `That's ${COUNTRY_BY_ID.get(tapped)!.name}. ${3 - tries} ${tries === 2 ? 'try' : 'tries'} left.`;
     if (tries >= 3) reveal();
@@ -810,6 +811,8 @@ function practice(scope: Scope, mode: Mode) {
     finishQuestion(false);
     map.mark(id, 'reveal');
     map.label(id, c.name, 'reveal');
+    map.ring(id);
+    map.fadeOthers(id);
     map.focus(id);
     panel.replaceChildren(
       h('p.prompt.bad', {}, 'This is ', h('strong', { textContent: c.name }), '. It will come back at the end.'),
@@ -935,6 +938,7 @@ function challenge(scope: Scope) {
       if (id && ids.has(id)) {
         map.clearLabels();
         map.label(id, COUNTRY_BY_ID.get(id)!.name, found.has(id) ? 'correct' : 'reveal');
+        if (!found.has(id)) map.ring(id);
       }
     });
     panel.replaceChildren(
