@@ -8,8 +8,8 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['icon.svg', 'apple-touch-icon.png'],
       manifest: {
-        name: 'Country Quiz',
-        short_name: 'Countries',
+        name: 'country quiz',
+        short_name: 'countries',
         description: 'Learn where every country in the world is, one region at a time.',
         theme_color: '#ffffff',
         background_color: '#f6f8f7',
@@ -23,7 +23,7 @@ export default defineConfig({
         ],
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,svg,png}'],
+        globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
         maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
       },
     }),
