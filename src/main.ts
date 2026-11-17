@@ -43,11 +43,11 @@ function show(...nodes: Node[]) {
 const scopeName = (s: Scope) => (s === 'world' ? 'Whole world' : REGIONS.find((r) => r.id === s)!.name);
 const scopeCountries = (s: Scope) => (s === 'world' ? COUNTRIES : regionCountries(s));
 
-function topBar(title: string, back?: () => void, right?: Node) {
+function topBar(title: string, back?: () => void, right?: Node, left?: Node) {
   return h(
     'header.bar',
     {},
-    back ? h('button.icon', { onclick: back, ariaLabel: 'Back', textContent: '‹' }) : h('span.icon-spacer'),
+    back ? h('button.icon', { onclick: back, ariaLabel: 'Back', textContent: '‹' }) : left ?? h('span.icon-spacer'),
     h('h1', { textContent: title }),
     right ?? h('span.icon-spacer'),
   );
@@ -91,7 +91,7 @@ function home() {
   const learned = totalLearned();
   const worldBest = getBest('world');
   show(
-    topBar('Country Quiz'),
+    topBar('Country Quiz', undefined, undefined, h('button.icon.menu-btn', { type: 'button', ariaLabel: 'Menu', textContent: '☰', onclick: sideMenu })),
     h(
       'main.home',
       {},
@@ -125,41 +125,6 @@ function home() {
           }),
         ),
       ),
-      accountBox(),
-      h(
-        'footer.foot',
-        {},
-        h('button.link', {
-          textContent: 'Reset progress',
-          onclick: async (e: Event) => {
-            const btn = e.currentTarget as HTMLButtonElement;
-            if (!btn.dataset.armed) {
-              btn.dataset.armed = '1';
-              btn.textContent = syncState().email
-                ? 'Tap again to erase all progress on every device (memory hooks are kept)'
-                : 'Tap again to erase all progress (memory hooks are kept)';
-              return;
-            }
-            btn.disabled = true;
-            try {
-              await resetEverywhere();
-              onSyncState(() => {
-  // Refresh just the account box so the page doesn't jump while syncing.
-  const box = document.querySelector('.account');
-  const next = onHome ? accountBox() : null;
-  if (box && next) box.replaceWith(next);
-  else if (onHome && !!box !== !!next) home();
-});
-home();
-initSync(() => {
-  if (onHome) home();
-});
-            } catch (err: any) {
-              btn.textContent = `Couldn't reset: ${err?.message ?? err}`;
-            }
-          },
-        }),
-      ),
     ),
   );
   onHome = true;
@@ -181,14 +146,8 @@ function tipLine() {
   return h('div.tip', {}, info, h('p', {}, 'Learn one region at a time:', more));
 }
 
-/** A region card: tapping it opens the region; the Stats link at the bottom opens the stats drawer. */
 function regionCard(scope: Scope, ...content: (Node | null)[]) {
-  return h(
-    `div.region-card${scope === 'world' ? '.world' : ''}`,
-    {},
-    h('button.region-open', { type: 'button', onclick: () => regionMenu(scope) }, ...content),
-    h('button.stats-link', { type: 'button', textContent: 'Stats', onclick: () => statsDrawer(scope) }),
-  );
+  return h(`button.region-card${scope === 'world' ? '.world' : ''}`, { type: 'button', onclick: () => regionMenu(scope) }, ...content);
 }
 
 function recentCard() {
@@ -205,24 +164,90 @@ function recentCard() {
   );
 }
 
-function statsDrawer(scope: Scope) {
-  const st = regionStats(scope);
-  const best = getBest(scope);
+let closeDrawer: () => void = () => {};
+
+/** Slide-in panel from the left over a blurred backdrop (stats, side menu). */
+function openDrawer(label: string, eyebrow: string, title: string, ...content: (Node | null)[]) {
+  closeDrawer();
   const opener = document.activeElement as HTMLElement | null;
-  const statRow = (label: string, value: string, sub?: string) =>
-    h('div.stat', {}, h('span.muted', { textContent: label }), h('span.stat-val', {}, value, sub ? h('span.muted.small', { textContent: ` ${sub}` }) : null));
   const close = () => {
     document.removeEventListener('keydown', onKey);
     backdrop.classList.add('closing');
     setTimeout(() => backdrop.remove(), 200);
+    closeDrawer = () => {};
     opener?.focus();
   };
   const onKey = (e: KeyboardEvent) => e.key === 'Escape' && close();
-  const closeBtn = h('button.icon.close', { type: 'button', ariaLabel: 'Close stats', textContent: '✕', onclick: close });
+  const closeBtn = h('button.icon.close', { type: 'button', ariaLabel: 'Close', textContent: '✕', onclick: close });
   const drawer = h(
     'aside.drawer',
-    { role: 'dialog', ariaModal: 'true', ariaLabel: `${scopeName(scope)} stats`, onclick: (e: Event) => e.stopPropagation() },
-    h('div.drawer-head', {}, h('div', {}, h('span.eyebrow', { textContent: 'Stats' }), h('h2', { textContent: scopeName(scope) })), closeBtn),
+    { role: 'dialog', ariaModal: 'true', ariaLabel: label, onclick: (e: Event) => e.stopPropagation() },
+    h('div.drawer-head', {}, h('div', {}, h('span.eyebrow', { textContent: eyebrow }), h('h2', { textContent: title })), closeBtn),
+    ...content,
+  );
+  const backdrop = h('div.sheet-backdrop', { onclick: close }, drawer);
+  document.addEventListener('keydown', onKey);
+  document.body.append(backdrop);
+  closeDrawer = close;
+  closeBtn.focus();
+}
+
+/** Side menu. Settings live here; add new settings to this section. */
+function sideMenu() {
+  openDrawer(
+    'Menu',
+    'Country Quiz',
+    'Menu',
+    h(
+      'nav.side-nav',
+      {},
+      h('button.side-link', { type: 'button', onclick: () => { closeDrawer(); home(); } }, h('span', { textContent: 'Home' })),
+      ...REGIONS.map((r) => h('button.side-link', { type: 'button', onclick: () => { closeDrawer(); regionMenu(r.id); } }, h('span', { textContent: r.name }))),
+      h('button.side-link', { type: 'button', onclick: () => { closeDrawer(); regionMenu('world'); } }, h('span', { textContent: 'Whole world' })),
+    ),
+    h(
+      'section.settings',
+      {},
+      h('h3', { textContent: 'Settings' }),
+      h('div.setting-group', {}, h('span.setting-label', { textContent: 'Account and sync' }), accountBox()),
+      h('div.setting-group', {}, h('span.setting-label', { textContent: 'Progress' }), resetButton()),
+    ),
+  );
+}
+
+function resetButton() {
+  return h('button.link.danger', {
+          textContent: 'Reset progress',
+          onclick: async (e: Event) => {
+            const btn = e.currentTarget as HTMLButtonElement;
+            if (!btn.dataset.armed) {
+              btn.dataset.armed = '1';
+              btn.textContent = syncState().email
+                ? 'Tap again to erase all progress on every device (memory hooks are kept)'
+                : 'Tap again to erase all progress (memory hooks are kept)';
+              return;
+            }
+            btn.disabled = true;
+            try {
+              await resetEverywhere();
+              closeDrawer();
+              home();
+            } catch (err: any) {
+              btn.textContent = `Couldn't reset: ${err?.message ?? err}`;
+            }
+          },
+        });
+}
+
+function statsDrawer(scope: Scope) {
+  const st = regionStats(scope);
+  const best = getBest(scope);
+  const statRow = (label: string, value: string, sub?: string) =>
+    h('div.stat', {}, h('span.muted', { textContent: label }), h('span.stat-val', {}, value, sub ? h('span.muted.small', { textContent: ` ${sub}` }) : null));
+  openDrawer(
+    `${scopeName(scope)} stats`,
+    'Stats',
+    scopeName(scope),
     h('div.drawer-hero', {}, h('div.big', { textContent: `${st.learned} / ${st.total}` }), h('div.muted.small', { textContent: 'learned' }), progressBar(st.learned, st.total)),
     h(
       'div.stat-list',
@@ -244,12 +269,8 @@ function statsDrawer(scope: Scope) {
           ),
         )
       : h('p.muted.small', { textContent: 'Nothing missed yet.' }),
-    h('div.drawer-actions', {}, h('button.primary', { type: 'button', textContent: st.due ? `Practice ${st.due} due` : 'Practice', onclick: () => { close(); practice(scope, 'find'); } })),
+    h('div.drawer-actions', {}, h('button.primary', { type: 'button', textContent: st.due ? `Practice ${st.due} due` : 'Practice', onclick: () => { closeDrawer(); practice(scope, 'find'); } })),
   );
-  const backdrop = h('div.sheet-backdrop', { onclick: close }, drawer);
-  document.addEventListener('keydown', onKey);
-  document.body.append(backdrop);
-  closeBtn.focus();
 }
 
 // ---------------------------------------------------------------- Account and sync
@@ -373,6 +394,12 @@ function regionMenu(scope: Scope) {
         'Timed challenge',
         `Type all ${n} names against the clock${best ? ` · best ${best.found}/${best.total} in ${fmtTime(best.ms)}` : ''}`,
         () => challenge(scope),
+      ),
+      h(
+        'button.menu-item.arrow-item',
+        { type: 'button', onclick: () => statsDrawer(scope) },
+        h('span', {}, h('strong', { textContent: 'Stats' }), h('span.muted.small', { textContent: 'Accuracy, best score and your most-missed countries' })),
+        h('span.arrow', { ariaHidden: 'true', textContent: '›' }),
       ),
     ),
   );
@@ -725,11 +752,10 @@ function challenge(scope: Scope) {
 }
 
 onSyncState(() => {
-  // Refresh just the account box so the page doesn't jump while syncing.
+  // Refresh the account box in the side menu, if it's open.
   const box = document.querySelector('.account');
-  const next = onHome ? accountBox() : null;
+  const next = accountBox();
   if (box && next) box.replaceWith(next);
-  else if (onHome && !!box !== !!next) home();
 });
 home();
 initSync(() => {
