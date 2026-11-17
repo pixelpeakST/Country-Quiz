@@ -38,7 +38,12 @@ interface Data {
 
 const KEY = 'country-quiz:v1';
 // No fuzz, so replaying the same log always gives the same schedule on every device.
-const scheduler = fsrs({ enable_fuzz: false });
+// No same-day learning steps: a country comes due again on a later day (a miss the
+// next day, a first right answer in about 3 days). Misses are already re-asked at the
+// end of the session, so short steps only made "due" pile up while you played.
+const scheduler = fsrs({ enable_fuzz: false, enable_short_term: false });
+/** Bump when the scheduler settings change, so saved cards are rebuilt from the log. */
+const SCHEDULE_VERSION = 2;
 
 export const newId = () =>
   typeof crypto !== 'undefined' && 'randomUUID' in crypto
@@ -113,6 +118,13 @@ function rebuildCards() {
   for (const ev of data.log) applyEvent(ev);
 }
 
+// Saved cards from an older schedule are rebuilt from the answer log.
+if ((data as any).schedule !== SCHEDULE_VERSION) {
+  rebuildCards();
+  (data as any).schedule = SCHEDULE_VERSION;
+  save();
+}
+
 // ---------------------------------------------------------------- Sync hooks
 
 let onChange: (() => void) | null = null;
@@ -183,7 +195,8 @@ export function clearLocalProgress() {
 /** A country counts as "learned" once it has graduated to review and was last answered right. */
 export function isLearned(mode: Mode, id: string): boolean {
   const c = getCard(mode, id);
-  return !!c && c.state === State.Review;
+  // In review and last answered right (a miss schedules it for the next day).
+  return !!c && c.state === State.Review && c.scheduled_days >= 2;
 }
 
 export function regionProgress(region: RegionId, mode: Mode = 'find') {
