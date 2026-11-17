@@ -962,19 +962,37 @@ onSyncState(() => {
   if (box && next) box.replaceWith(next);
 });
 home();
-// iPhone keyboard: iOS shrinks only the visual viewport and scrolls the page
-// to keep the input in view, pushing the map off screen. Instead, size the
-// quiz screen to the space above the keyboard and keep the page unscrolled.
+// iPhone keyboard: iOS scrolls the page to keep the input in view, pushing the
+// map off screen. Instead, size the screen to the space above the keyboard and
+// keep the page unscrolled. In the home-screen app iOS shrinks innerHeight along
+// with the visual viewport, so compare against the height seen while not typing.
 const vv = window.visualViewport;
 if (vv) {
+  const typing = () => {
+    const a = document.activeElement;
+    return !!a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA');
+  };
+  // Tallest height seen for the current width (a rotation starts over). Only
+  // grows, since the keyboard can still be closing after the input loses focus.
+  let fullH = 0;
+  let fullW = 0;
   const syncViewport = () => {
-    const kb = window.innerHeight - vv.height > 120;
-    document.documentElement.classList.toggle('kb-open', kb);
-    document.documentElement.style.setProperty('--app-h', kb ? `${Math.round(vv.height)}px` : '');
+    if (window.innerWidth !== fullW) [fullW, fullH] = [window.innerWidth, 0];
+    if (!typing() || !fullH) fullH = Math.max(fullH, vv.height, window.innerHeight);
+    const kb = typing() && vv.height < fullH - 120;
+    const root = document.documentElement;
+    root.classList.toggle('kb-open', kb);
+    root.style.setProperty('--app-h', kb ? `${Math.round(vv.height)}px` : '');
     if (kb && (window.scrollY || vv.offsetTop)) window.scrollTo(0, 0);
   };
+  // The keyboard animates in, so check again as it settles.
+  const soon = () => [0, 100, 300, 600].forEach((ms) => setTimeout(syncViewport, ms));
   vv.addEventListener('resize', syncViewport);
   vv.addEventListener('scroll', syncViewport);
+  window.addEventListener('resize', syncViewport);
+  syncViewport();
+  document.addEventListener('focusin', soon);
+  document.addEventListener('focusout', soon);
 }
 
 initSync(() => {
