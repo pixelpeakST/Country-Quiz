@@ -15,6 +15,9 @@
   --good: #2e9d5b;
   --bad: #d64545;
   --target: #f2b632;
+  --icon-bg: #ffffff;
+  --icon-fg: #000000;
+  --icon-edge: #dbe3e0;
   --font-display: 'Lilita One', 'Sniglet', system-ui, sans-serif;
   --font-round: 'Sniglet', system-ui, sans-serif;
   --font-body: 'Nunito', system-ui, -apple-system, sans-serif;
@@ -40,6 +43,9 @@
     --land: #3a4541;
     --land-other: #252e2b;
     --country-stroke: #111715;
+    --icon-bg: #000000;
+    --icon-fg: #ffffff;
+    --icon-edge: #2c3833;
     color-scheme: dark;
   }
 }
@@ -57,6 +63,9 @@
     --land: #3a4541;
     --land-other: #252e2b;
     --country-stroke: #111715;
+    --icon-bg: #000000;
+    --icon-fg: #ffffff;
+    --icon-edge: #2c3833;
   color-scheme: dark;
 }
 
@@ -300,7 +309,7 @@ button.icon, .arrow { font-family: system-ui, -apple-system, sans-serif; }
 .activity { display: flex; flex-direction: column; gap: 14px; }
 .streak-card { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 16px; background: var(--bg); }
 .streak-card.on { background: color-mix(in srgb, var(--target) 22%, var(--surface)); }
-.flame { font-size: 2rem; line-height: 1; animation: wiggle 2.4s ease-in-out 0.5s infinite; transform-origin: 50% 90%; }
+.flame { display: block; width: 44px; height: 44px; flex: none; animation: wiggle 2.4s ease-in-out 0.5s infinite; transform-origin: 50% 90%; }
 .streak-card:not(.on) .flame { animation: none; }
 .streak-num { font: 400 1.35rem/1.1 var(--font-display); }
 .streak-lines { display: inline-flex; flex-direction: column; align-items: center; }
@@ -346,7 +355,7 @@ button.icon, .arrow { font-family: system-ui, -apple-system, sans-serif; }
   position: relative; text-align: center; padding: 22px 28px; border-radius: 24px; background: var(--surface);
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.18); animation: pop 0.6s var(--spring);
 }
-.celebrate-emoji { font-size: 3rem; line-height: 1; animation: bounce 0.9s var(--spring) 0.25s 2; }
+.celebrate-emoji { display: block; width: 72px; height: 72px; margin: 0 auto; animation: bounce 0.9s var(--spring) 0.25s 2; }
 .celebrate-num { font: 400 2rem/1.1 var(--font-display); margin-top: 8px; display: inline-flex; align-items: center; gap: 6px; }
 .celebrate-num .streak-word { font-size: 1.25em; }
 /* The exclamation mark is as tall as both lines. */
@@ -378,3 +387,11 @@ button.icon, .arrow { font-family: system-ui, -apple-system, sans-serif; }
 .dropdown-body > div { overflow: hidden; }
 .dropdown-body .account { margin-top: 8px; }
 .dropdown.open .dropdown-body { grid-template-rows: 1fr; opacity: 1; }
+
+/* ---- Flame icon, styled like the app icon. */
+.flame-svg { display: block; width: 100%; height: 100%; }
+.flame-tile { fill: var(--icon-bg); stroke: var(--icon-edge); stroke-width: 1.5; }
+.flame-shape { fill: var(--icon-fg); }
+.flame-dot { fill: var(--good); stroke: var(--icon-bg); stroke-width: 2.5; }
+.flame.off .flame-shape { fill: var(--muted); opacity: 0.45; }
+.flame.off .flame-dot { fill: var(--muted); opacity: 0.6; }

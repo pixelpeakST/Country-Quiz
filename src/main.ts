@@ -261,7 +261,7 @@ function activityPanel() {
     ? h(
         'div.streak-card.on',
         {},
-        h('span.flame', { ariaHidden: 'true', textContent: '🔥' }),
+        flameIcon('flame'),
         h('div', {},
           streakTitle(a.streak, 'streak-num'),
           h('div.muted.small', { textContent: a.doneToday ? 'you practiced today. see you tomorrow!' : 'practice today to keep it going' }),
@@ -270,7 +270,7 @@ function activityPanel() {
     : h(
         'div.streak-card',
         {},
-        h('span.flame', { ariaHidden: 'true', textContent: '🌱' }),
+        flameIcon('flame.off'),
         h('div', {},
           h('div.streak-num', { textContent: a.lastAt ? `last practice ${timeAgo(a.lastAt)}` : 'no practice yet' }),
           h('div.muted.small', { textContent: 'practice today to start a streak' }),
@@ -322,6 +322,16 @@ function activityPanel() {
   );
 }
 
+/** Flame in the app icon's style: a rounded tile, a flame and a green dot. Colors flip with the theme. */
+function flameIcon(cls: string) {
+  const wrap = h(`span.${cls}`, { ariaHidden: 'true' });
+  wrap.innerHTML =
+    '<svg viewBox="0 0 64 64" class="flame-svg"><rect width="64" height="64" rx="14" class="flame-tile"/>' +
+    '<path class="flame-shape" d="M32 7c1.5 9 15 15.5 15 31a15 15 0 0 1-30 0c0-8.5 4-13.5 7.5-17 .6 5 2.6 8 6 9.5C28.5 21.5 29 13 32 7z"/>' +
+    '<circle class="flame-dot" cx="32" cy="41" r="6.5"/></svg>';
+  return wrap;
+}
+
 const ONES = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve',
   'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen'];
 const TENS = ['', '', 'twenty', 'thirty', 'forty', 'fifty', 'sixty', 'seventy', 'eighty', 'ninety'];
@@ -365,7 +375,7 @@ function celebrate(n: number) {
     { role: 'status' },
     burst,
     h('div.celebrate-card', {},
-      h('div.celebrate-emoji', { textContent: n >= 10 ? '🏆' : '🔥' }),
+      flameIcon('celebrate-emoji'),
       streakTitle(n, 'celebrate-num', true),
       h('div.muted', { textContent: n === 3 ? 'nice start, keep it rolling' : 'you are on fire' }),
     ),
