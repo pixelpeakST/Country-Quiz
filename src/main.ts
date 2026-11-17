@@ -344,22 +344,12 @@ function numberWord(n: number): string {
   return TENS[Math.floor(n / 10)] + (n % 10 ? `-${ONES[n % 10]}` : '');
 }
 
-/** A tall, skinny exclamation mark with rounded ends, drawn so it can match the text height. */
-function bangMark() {
-  const wrap = h('span.bang', { ariaHidden: 'true' });
-  wrap.innerHTML =
-    '<svg viewBox="0 0 12 60" preserveAspectRatio="xMidYMax meet">' +
-    '<path d="M6 1.5a4.5 4.5 0 0 1 4.5 4.6L8.2 40.2a2.2 2.2 0 0 1-4.4 0L1.5 6.1A4.5 4.5 0 0 1 6 1.5z"/>' +
-    '<circle cx="6" cy="54.2" r="4.3"/></svg>';
-  return wrap;
-}
-
 /** "five" centered above "day streak" (or "101 day streak" on one line past 100). */
-function streakTitle(n: number, cls: string, bang = false) {
+function streakTitle(n: number, cls: string) {
   const text = n > 100
     ? h('span.streak-lines', {}, h('span', { textContent: `${n} day streak` }))
     : h('span.streak-lines', {}, h('span.streak-word', { textContent: numberWord(n) }), h('span', { textContent: 'day streak' }));
-  return h(`div.${cls}`, {}, text, bang ? bangMark() : null);
+  return h(`div.${cls}`, {}, text);
 }
 
 function celebrateIfStreak(delay: number) {
@@ -386,7 +376,7 @@ function celebrate(n: number) {
     burst,
     h('div.celebrate-card', {},
       flameIcon('celebrate-emoji'),
-      streakTitle(n, 'celebrate-num', true),
+      streakTitle(n, 'celebrate-num'),
       h('div.muted', { textContent: n === 3 ? 'nice start, keep it rolling' : 'you are on fire' }),
     ),
   );
