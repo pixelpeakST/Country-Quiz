@@ -297,7 +297,7 @@ function activityPanel() {
       h(
         `div.bar-col${i === a.perDay.length - 1 ? '.today' : ''}`,
         {},
-        h(`div.bar${d.count ? '' : '.zero'}`, {
+        h(`div.gbar${d.count ? '' : '.zero'}`, {
           title: `${d.count} answers`,
           // Each bar grows at its own pace.
           style: `height:${d.count ? Math.max(6, (d.count / max) * 100) : 3}%;--dur:${(0.55 + Math.random() * 0.7).toFixed(2)}s;--delay:${(0.1 + i * 0.03).toFixed(2)}s`,
