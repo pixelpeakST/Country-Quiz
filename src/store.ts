@@ -204,12 +204,27 @@ export function isLearned(mode: Mode, id: string): boolean {
   return !!c && c.state === State.Review && c.scheduled_days >= 2;
 }
 
+/**
+ * End of today in local time. Reviews are counted by day, not by the minute: a
+ * country answered at 7 pm three days ago is due all of today, not only after 7 pm.
+ * Counting by the minute made new countries trickle into "due" while you played,
+ * at the same pace you answered them a few days earlier, so the count never dropped.
+ */
+function dueCutoff(now = Date.now()) {
+  const d = new Date(now);
+  d.setHours(23, 59, 59, 999);
+  return d.getTime();
+}
+
+const isDue = (card: Card, cutoff = dueCutoff()) => card.due.getTime() <= cutoff;
+
 export function regionProgress(region: RegionId, mode: Mode = 'find') {
   const list = regionCountries(region);
   const learned = list.filter((c) => isLearned(mode, c.id)).length;
+  const cutoff = dueCutoff();
   const due = list.filter((c) => {
     const card = getCard(mode, c.id);
-    return card && card.due.getTime() <= Date.now();
+    return card && isDue(card, cutoff);
   }).length;
   return { learned, due, total: list.length };
 }
@@ -220,10 +235,12 @@ export function totalLearned(mode: Mode = 'find') {
 
 /**
  * Pick a practice session for a region: due reviews first (most overdue first),
- * then up to `newLimit` unseen countries, topped up with the weakest ones.
+ * then up to `newLimit` unseen countries. Spare slots alternate between the
+ * weakest countries and the ones you haven't seen for longest, so learned
+ * countries still come back now and then instead of the same weak few every time.
  */
 export function pickSession(region: RegionId | 'world', mode: Mode, size = 10, newLimit = 5): string[] {
-  const now = Date.now();
+  const cutoff = dueCutoff();
   const pool = region === 'world' ? COUNTRIES : regionCountries(region);
   const seen: { id: string; card: Card }[] = [];
   const unseen: string[] = [];
@@ -232,16 +249,19 @@ export function pickSession(region: RegionId | 'world', mode: Mode, size = 10, n
     if (card) seen.push({ id: c.id, card });
     else unseen.push(c.id);
   }
-  const due = seen.filter((s) => s.card.due.getTime() <= now).sort((a, b) => a.card.due.getTime() - b.card.due.getTime());
+  const due = seen.filter((s) => isDue(s.card, cutoff)).sort((a, b) => a.card.due.getTime() - b.card.due.getTime());
   const picked = due.slice(0, size).map((s) => s.id);
   for (const id of shuffle(unseen).slice(0, Math.min(newLimit, size - picked.length))) picked.push(id);
   if (picked.length < size) {
-    // Top up with the least stable cards that aren't already picked.
-    const rest = seen
-      .filter((s) => !picked.includes(s.id))
-      .sort((a, b) => a.card.stability - b.card.stability)
-      .map((s) => s.id);
-    picked.push(...rest.slice(0, size - picked.length));
+    const rest = seen.filter((s) => !picked.includes(s.id));
+    const weakest = rest.slice().sort((a, b) => a.card.stability - b.card.stability);
+    const lastSeen = (s: { card: Card }) => s.card.last_review?.getTime() ?? 0;
+    const oldest = rest.slice().sort((a, b) => lastSeen(a) - lastSeen(b));
+    for (let i = 0; picked.length < size && (weakest.length || oldest.length); i++) {
+      const from = i % 2 === 0 ? weakest : oldest;
+      const next = from.shift() ?? (from === weakest ? oldest : weakest).shift();
+      if (next && !picked.includes(next.id)) picked.push(next.id);
+    }
   }
   if (picked.length < size) {
     picked.push(...shuffle(unseen.filter((id) => !picked.includes(id))).slice(0, size - picked.length));
@@ -353,14 +373,14 @@ export function regionStats(region: RegionId | 'world'): RegionStats {
     .sort((a, b) => b[1].misses - a[1].misses || b[1].misses / b[1].answers - a[1].misses / a[1].answers)
     .slice(0, 5)
     .map(([id, p]) => ({ id, ...p }));
-  const now = Date.now();
+  const cutoff = dueCutoff();
   let due = 0;
   let nextDue: number | null = null;
   for (const c of list) {
     const card = getCard('find', c.id);
     if (!card) continue;
     const t = card.due.getTime();
-    if (t <= now) due++;
+    if (t <= cutoff) due++;
     else if (nextDue === null || t < nextDue) nextDue = t;
   }
   return {

@@ -76,12 +76,14 @@ function timeAgo(t: number) {
   return d === 1 ? 'yesterday' : `${d} days ago`;
 }
 
+/** Reviews come due by calendar day, so say which day rather than how many hours. */
 function timeUntil(t: number) {
-  const s = Math.max(0, (t - Date.now()) / 1000);
-  const hr = s / 3600;
-  if (hr < 1) return 'within the hour';
-  if (hr < 24) return `in ${Math.round(hr)} hour${Math.round(hr) === 1 ? '' : 's'}`;
-  const d = Math.round(hr / 24);
+  const day = (x: number) => {
+    const d = new Date(x);
+    return Math.round(new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime() / 86_400_000);
+  };
+  const d = day(t) - day(Date.now());
+  if (d <= 0) return 'today';
   return d === 1 ? 'tomorrow' : `in ${d} days`;
 }
 
@@ -426,7 +428,7 @@ function statsDrawer(scope: Scope) {
     h(
       'div.stat-list',
       {},
-      statRow('Due now', String(st.due), st.due ? undefined : st.nextDue ? `· next ${timeUntil(st.nextDue)}` : undefined),
+      statRow('Due today', String(st.due), st.due ? undefined : st.nextDue ? `· next ${timeUntil(st.nextDue)}` : undefined),
       statRow('Countries seen', `${st.seen} of ${st.total}`),
       statRow('Find it accuracy', pct(st.find.correct, st.find.answers), st.find.answers ? `(${st.find.answers} answers)` : undefined),
       statRow('Name it accuracy', pct(st.name.correct, st.name.answers), st.name.answers ? `(${st.name.answers} answers)` : undefined),
