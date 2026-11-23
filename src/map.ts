@@ -3,7 +3,8 @@
 import { geoArea, geoCentroid, geoMercator, geoNaturalEarth1, geoPath, type GeoProjection } from 'd3-geo';
 import { select, type Selection } from 'd3-selection';
 import 'd3-transition';
-import { zoom, zoomIdentity, type ZoomBehavior } from 'd3-zoom';
+import { easeCubicInOut, easeCubicOut } from 'd3-ease';
+import { zoom, zoomIdentity, zoomTransform, type ZoomBehavior, type ZoomTransform } from 'd3-zoom';
 import type { Feature, FeatureCollection, Geometry, MultiPolygon, Polygon } from 'geojson';
 import { feature } from 'topojson-client';
 import type { Topology } from 'topojson-specification';
@@ -21,6 +22,43 @@ const DOT_RADIUS = 5.1; // screen px
 const TINY_AREA = 40; // px² at normal zoom, below which a country also gets a dot
 const DOT_HIDE_AREA = 400; // px² on screen; once zoomed in this far, the dot is hidden
 const RING_RADIUS = 14; // screen px, ring drawn around a revealed tiny country
+const FOCUS_MS = 750; // zoom to a country
+const RESET_MS = 650; // zoom back out to the whole region
+const SETTLE_MS = 450; // finish a move after the map was resized (keyboard opening/closing)
+
+type Box = { x: number; y: number; width: number; height: number };
+
+/**
+ * Projected box around a country's main landmass: its largest polygon plus any
+ * sizable polygons touching it (North + South Island, but not the Kermadec or
+ * Chatham Islands; the lower 48, but not Alaska or Hawaii).
+ */
+function mainBox(f: Shape, path: ReturnType<typeof geoPath>): Box | null {
+  const g = f.geometry;
+  const polys: Polygon[] =
+    g.type === 'MultiPolygon' ? (g as MultiPolygon).coordinates.map((c) => ({ type: 'Polygon', coordinates: c })) : g.type === 'Polygon' ? [g as Polygon] : [];
+  const parts = polys
+    .map((p) => ({ area: path.area(p), b: path.bounds(p) }))
+    .filter((p) => p.area > 0 && p.b.every((xy) => xy.every(Number.isFinite)));
+  if (!parts.length) return null;
+  parts.sort((a, b) => b.area - a.area);
+  const [main] = parts;
+  let [[x0, y0], [x1, y1]] = main.b;
+  const near = (b: [[number, number], [number, number]], m: number) =>
+    b[0][0] <= x1 + m && b[1][0] >= x0 - m && b[0][1] <= y1 + m && b[1][1] >= y0 - m;
+  let rest = parts.slice(1).filter((p) => p.area >= main.area * 0.05);
+  for (let grew = true; grew; ) {
+    grew = false;
+    const m = Math.max(x1 - x0, y1 - y0) * 0.1;
+    rest = rest.filter((p) => {
+      if (!near(p.b, m)) return true;
+      [x0, y0, x1, y1] = [Math.min(x0, p.b[0][0]), Math.min(y0, p.b[0][1]), Math.max(x1, p.b[1][0]), Math.max(y1, p.b[1][1])];
+      grew = true;
+      return false;
+    });
+  }
+  return { x: x0, y: y0, width: x1 - x0, height: y1 - y0 };
+}
 
 /** Center of a country's largest polygon (so island groups don't land in the sea between them). */
 function mainCentroid(f: Shape): [number, number] {
@@ -62,8 +100,10 @@ export class WorldMap {
   private rings = new Set<string>();
   /** Screen position of each tiny country's dot (they get a ring when revealed). */
   private tinyXY = new Map<string, [number, number]>();
-  private mainPath = new Map<string, SVGPathElement>();
+  private drawn = false;
   private tinyArea = new Map<string, number>();
+  /** Box around each country's main landmass, for labels and zooming. */
+  private mainBoxes = new Map<string, Box>();
 
   /** True while a country is still too small to see, so it's shown as a dot. */
   private showsDot(id: string) {
@@ -78,7 +118,9 @@ export class WorldMap {
       const { clientWidth: w, clientHeight: h } = this.el;
       if (w && h && (Math.abs(w - this.width) > 2 || Math.abs(h - this.height) > 2)) {
         clearTimeout(this.resizeTimer);
-        this.resizeTimer = window.setTimeout(() => this.render(), 120);
+        // Wait for the keyboard to finish animating, then redraw for the new
+        // size, picking up the view where it was (see render).
+        this.resizeTimer = window.setTimeout(() => this.render(), 160);
       }
     });
     this.resizeObs.observe(this.el);
@@ -111,6 +153,9 @@ export class WorldMap {
     this.width = this.el.clientWidth;
     this.height = this.el.clientHeight;
     if (!this.width || !this.height) return;
+    // On a redraw (the map was resized), remember what's on screen so the new
+    // map can continue from exactly there instead of snapping back out.
+    const prev = this.drawn ? this.viewState() : null;
     this.svg?.interrupt();
     this.el.replaceChildren();
     this.nodes.clear();
@@ -131,7 +176,7 @@ export class WorldMap {
     const tinyIds = new Set<string>();
     this.tinyXY.clear();
     this.tinyArea.clear();
-    this.mainPath.clear();
+    this.mainBoxes.clear();
     const shapeArea = new Map<string, number>();
     const centroids = new Map<string, [number, number]>();
 
@@ -149,8 +194,9 @@ export class WorldMap {
         // Only the country's main shape decides whether it is "tiny".
         if (f.properties.name === country.shapes[0]) {
           shapeArea.set(id, path.area(f));
-          this.mainPath.set(id, el);
           centroids.set(id, mainCentroid(f));
+          const box = mainBox(f, path);
+          if (box) this.mainBoxes.set(id, box);
         }
       } else {
         el.setAttribute('class', 'land'); // territories, disputed areas etc.
@@ -220,7 +266,35 @@ export class WorldMap {
     this.k = 1;
     for (const id of this.rings) this.drawRing(id);
     for (const [id, text, cls] of this.labels) this.drawLabel(id, text, cls);
-    if (this.focused) this.focus(this.focused);
+    this.drawn = true;
+    if (!prev) {
+      if (this.focused) this.focus(this.focused);
+      return;
+    }
+    // Same spot and size on screen as before the redraw, then glide on to
+    // where the map should be.
+    const t = this.restoreView(prev);
+    this.svg.call(this.zoomer.transform, t);
+    if (this.focused) this.focus(this.focused, SETTLE_MS, easeCubicOut);
+    else if (prev.home) this.svg.transition().duration(SETTLE_MS).ease(easeCubicOut).call(this.zoomer.transform, zoomIdentity);
+  }
+
+  /** The geographic point at the center of the screen and the on-screen scale. */
+  private viewState() {
+    const t = zoomTransform(this.svg.node()!);
+    const geo = this.projection.invert!(t.invert([this.width / 2, this.height / 2]));
+    return {
+      geo,
+      scale: this.projection.scale() * t.k,
+      home: !this.focused && Math.abs(t.k - 1) < 0.01 && Math.abs(t.x) < 1 && Math.abs(t.y) < 1,
+    };
+  }
+
+  private restoreView(v: { geo: [number, number] | null; scale: number }): ZoomTransform {
+    const p = v.geo && this.projection(v.geo);
+    if (!p) return zoomIdentity;
+    const k = v.scale / this.projection.scale();
+    return zoomIdentity.translate(this.width / 2 - k * p[0], this.height / 2 - k * p[1]).scale(k);
   }
 
   private get dotRadius() {
@@ -255,13 +329,13 @@ export class WorldMap {
   }
 
   /** Bounding box of a country's main shape (or its dot), in map units. */
-  private anchorBox(id: string): { x: number; y: number; width: number; height: number } | null {
+  private anchorBox(id: string): Box | null {
     const xy = this.tinyXY.get(id);
     if (xy && this.showsDot(id)) return { x: xy[0], y: xy[1], width: 0, height: 0 };
+    const box = this.mainBoxes.get(id);
+    if (box) return box;
     const c = COUNTRY_BY_ID.get(id)!;
     const shape = ALL_SHAPES.find((f) => f.properties.name === c.shapes[0]);
-    const el = this.mainPath.get(id);
-    if (el) return el.getBBox();
     const p = this.projection(c.point ?? (shape ? mainCentroid(shape) : [0, 0]));
     return p ? { x: p[0], y: p[1], width: 0, height: 0 } : null;
   }
@@ -336,30 +410,25 @@ export class WorldMap {
   }
 
   /** Zoom so the country is clearly visible (used when revealing an answer). */
-  focus(id: string) {
+  focus(id: string, ms = FOCUS_MS, ease = easeCubicInOut) {
     this.focused = id;
-    const els = this.nodes.get(id);
-    if (!els?.length) return;
-    let [x0, y0, x1, y1] = [Infinity, Infinity, -Infinity, -Infinity];
-    for (const el of els) {
-      const b = (el as SVGGraphicsElement).getBBox();
-      x0 = Math.min(x0, b.x);
-      y0 = Math.min(y0, b.y);
-      x1 = Math.max(x1, b.x + b.width);
-      y1 = Math.max(y1, b.y + b.height);
-    }
-    const bw = Math.max(x1 - x0, 1);
-    const bh = Math.max(y1 - y0, 1);
+    if (!this.svg) return;
+    // Frame the main landmass (or the dot), not far-off islands that belong to it.
+    const b = this.anchorBox(id);
+    if (!b) return;
+    const bw = Math.max(b.width, 1);
+    const bh = Math.max(b.height, 1);
     // Zoom in, but keep surrounding context: never more than 5x, and only if it's small.
     const k = Math.min(5, Math.max(1, 0.35 / Math.max(bw / this.width, bh / this.height)));
-    if (k < 1.5 && this.k <= 1.5) return;
-    const tx = this.width / 2 - k * (x0 + bw / 2);
-    const ty = this.height / 2 - k * (y0 + bh / 2);
-    this.svg.transition().duration(600).call(this.zoomer.transform, zoomIdentity.translate(tx, ty).scale(k));
+    const target =
+      k < 1.5
+        ? zoomIdentity
+        : zoomIdentity.translate(this.width / 2 - k * (b.x + bw / 2), this.height / 2 - k * (b.y + bh / 2)).scale(k);
+    this.svg.transition().duration(ms).ease(ease).call(this.zoomer.transform, target);
   }
 
   resetZoom() {
     this.focused = null;
-    this.svg?.transition().duration(400).call(this.zoomer.transform, zoomIdentity);
+    this.svg?.transition().duration(RESET_MS).ease(easeCubicInOut).call(this.zoomer.transform, zoomIdentity);
   }
 }
